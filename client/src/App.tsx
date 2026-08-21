@@ -1,6 +1,27 @@
+import { useEffect, useState } from "react";
 import { Cell } from "./scene/Cell";
 import { Panel } from "./ui/Panel";
 import { useRobot } from "./lib/useRobot";
+
+/** Data e hora do turno, batendo de segundo em segundo.
+ *
+ *  Relógio próprio, e não derivado do estado que chega da célula: se a fonte
+ *  parar, o relógio continua andando e é o SELO ao lado que denuncia a parada.
+ *  Um relógio que congela junto pareceria tela travada, e travada ela não
+ *  está — o dado é que sumiu. */
+function Relogio() {
+  const [agora, setAgora] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setAgora(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <span className="relogio">
+      {agora.toLocaleDateString("pt-BR")}
+      <b>{agora.toLocaleTimeString("pt-BR")}</b>
+    </span>
+  );
+}
 
 export function App() {
   const robot = useRobot();
@@ -11,11 +32,12 @@ export function App() {
         <h1>Supervisório · Célula R-01</h1>
         <span className="tag">MOTOMAN GP12 · PALETIZAÇÃO · mm</span>
         <span className="spacer" />
+        <Relogio />
         {!robot.connected ? (
           <span className="pill off">SEM COMUNICAÇÃO</span>
         ) : robot.state?.fonte === "real" ? (
           robot.state.realOk
-            ? <span className="pill ok">DADOS REAIS</span>
+            ? <span className="pill ok">TEMPO REAL</span>
             : <span className="pill off">SEM DADOS REAIS</span>
         ) : (
           <span className="pill sim">DADOS SIMULADOS</span>

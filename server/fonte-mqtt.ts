@@ -22,7 +22,7 @@
 import { EventEmitter } from "node:events";
 import mqtt from "mqtt";
 import type { PlacedBox, RealPayload, RobotState } from "../shared/types.js";
-import { fkTcp, route, slot, PER_PALLET, TOTAL, PICK, FEED, PHASES } from "./simulator.js";
+import { fkTcp, route, slot, PER_PALLET, TOTAL, PICK, PHASES } from "./simulator.js";
 import { Ptp } from "./ptp.js";
 
 // O gateway manda sinal de vida a cada 1 s (VIDA_MS lá). Cinco segundos aqui
@@ -43,10 +43,18 @@ export class MqttSource extends EventEmitter {
   private naBalancaPrev = false;    // para detectar a borda de saída
   private qtdPrev = -1;             // para detectar o depósito
   private tCarregando = 0;          // s carregando — rede de segurança
+  private depositoContado = false;  // o CLP já contou a caixa que está no ar?
+  private ladoVoo: "A" | "B" | null = null;   // para qual palete ela vai
+  private wpAlvo = -1;              // para qual trecho o goTo já foi emitido
+
+  /** Larga a caixa e recua. Um só lugar, para não esquecer campo nenhum. */
+  private solta() {
+    this.carregando = false;
+    this.ladoVoo = null;
+    this.wp = 6;                    // RECUA
+  }
   // ---- a caixa vindo pela esteira ----
   private feedX: number | null = null;   // posição no eixo da linha, ou null
-  private sensorPrev = false;            // borda do SP3 (esteira de entrada)
-  private tEsperaBalanca = 0;            // s esperando a balança confirmar
   // ---- os paletes indo embora na empilhadeira ----
   private pal = {
     A: { pres: null as boolean | null, saida: 1, caixas: 0, qtdAnt: 0 },
@@ -128,10 +136,16 @@ export class MqttSource extends EventEmitter {
    *  congela quando deixa de ser. */
   private contagens(p: RealPayload) {
     const { noLado2 } = this.roteamento(p);
-    // `caixas` JÁ É a contagem desenhada: enquanto o lado é o ativo ela segue
-    // o contador do CLP, e quando deixa de ser fica congelada no último valor
-    // visto. Ver moveDoPalete.
-    return { noLado2, countA: this.pal.A.caixas, countB: this.pal.B.caixas };
+    // `caixas` segue o contador do CLP enquanto o lado é o ativo, e congela
+    // quando deixa de ser (ver moveDoPalete).
+    //
+    // Menos a que está no ar. Quando o CLP conta o depósito antes de o braço
+    // chegar ao slot, essa caixa está NA VENTOSA — desenhá-la também na pilha
+    // mostraria a mesma caixa em dois lugares. Ela entra na pilha no instante
+    // em que o braço a assenta, que é o que os olhos esperam ver.
+    const noAr = this.carregando && this.depositoContado ? this.ladoVoo : null;
+    const desc = (l: "A" | "B") => Math.max(0, this.pal[l].caixas - (noAr === l ? 1 : 0));
+    return { noLado2, countA: desc("A"), countB: desc("B") };
   }
 
   /** Qual lado o robô está atendendo AGORA. Os dois falsos é resposta válida:
@@ -223,17 +237,19 @@ export class MqttSource extends EventEmitter {
     // A caixa saiu dos roletes: foi o robô que a levou.
     const pegouAgora = this.naBalancaPrev && !naBalanca;
 
-    // QUALQUER mudança do contador encerra o transporte — sem exigir que o
-    // valor novo seja maior. A versão anterior pedia `qtd > 0`, e isso perdia
-    // exatamente o evento da TROCA DE LADO: ao completar o palete 1 o
-    // contador vai de 32 para 0, o depósito não era reconhecido, e o braço
-    // ficava parado no slot do lado 2 sem nunca voltar. Era esse o defeito.
-    // De quebra, cobre o rollback de falha (18 -> 16), que também é evento.
+    // QUALQUER mudança do contador conta como depósito — sem exigir que o
+    // valor novo seja maior. Pedir `qtd > 0` perdia exatamente o evento da
+    // TROCA DE LADO, quando o contador vai de 32 para 0. De quebra, cobre o
+    // recuo de falha (18 -> 16), que também é evento.
     const mudouContador = qtd !== this.qtdPrev;
 
     if (pegouAgora && !this.carregando) {
       this.carregando = true;
       this.tCarregando = 0;
+      this.depositoContado = false;
+      // Para qual palete esta caixa vai. Fixado AGORA, na pega: se fosse
+      // consultado depois, a troca de lado no meio do voo mudaria a resposta.
+      this.ladoVoo = rota.noLado2 ? "B" : "A";
       this.wp = 2;                    // SOBE, com a caixa
     } else if (pegouAgora) {
       // Já carregando e a caixa saiu dos roletes outra vez: a célula andou
@@ -243,76 +259,80 @@ export class MqttSource extends EventEmitter {
       this.tCarregando = 0;
     }
 
+    // =======================================================================
+    //  O DEPÓSITO AUTORIZA SOLTAR — NÃO SOLTA
+    //
+    //  Antes, a mudança do contador encerrava o transporte na hora. Isso cria
+    //  uma corrida: se a pega e o depósito caem no MESMO quadro, o transporte
+    //  era iniciado e cancelado no mesmo instante, e a caixa aparecia no
+    //  palete sem o braço levá-la. E não é hipótese remota — o contador do
+    //  CLP não é obrigado a incrementar só no assentamento, e o gateway
+    //  publica em lotes de até 100 ms.
+    //
+    //  Agora o contador só marca que o CLP já contou. Quem solta é a chegada
+    //  do braço ao slot, mais abaixo. O trajeto sempre acontece por inteiro.
+    // =======================================================================
     if (this.carregando) {
       this.tCarregando += dt;
-      // Rede de segurança: se o contador não confirmar em 25 s, algo se
-      // perdeu (sinal, reconexão, caso não previsto). Solta o braço em vez
-      // de deixá-lo plantado no slot para sempre.
-      if (mudouContador || this.tCarregando > 25) {
-        this.carregando = false;
-        this.wp = 6;                  // RECUA
-      }
+      if (mudouContador) this.depositoContado = true;
     }
     // =======================================================================
-    //  A CAIXA CHEGANDO PELA ESTEIRA
+    //  A CAIXA DA ENTRADA E O QUE A BALANCA DIZ - E NADA MAIS
     //
-    //  Antes a caixa simplesmente APARECIA sobre a balança. Agora o sensor de
-    //  entrada (SP3) dispara a viagem: a caixa nasce na boca da esteira e
-    //  desliza até os roletes na velocidade da correia. O atraso entre o
-    //  sensor acionar e a caixa chegar de fato é o tempo real do percurso —
-    //  não é enfeite, é o que acontece na linha.
+    //  Havia aqui uma animacao de chegada: o sensor SP3 disparava a viagem e
+    //  a caixa deslizava da boca da esteira ate os roletes. Foi removida a
+    //  pedido, e o motivo tecnico concorda com o pedido: era uma PREVISAO.
+    //  O SP3 diz que algo passou pela entrada; quem sabe se ha caixa NOS
+    //  ROLETES e a balanca. A previsao precisava de prazo de validade para
+    //  nao deixar caixa fantasma parada, e a caixa nova nascia na posicao da
+    //  anterior antes de subir a esteira de re - o teletransporte.
     //
-    //  Se a balança confirmar antes de a animação terminar (esteira mais
-    //  rápida do que o estimado), a caixa é encaixada nos roletes na hora:
-    //  o sinal manda, a animação obedece.
-    //
-    //  E — o ponto que faltava — a viagem é uma PREVISÃO, não um fato. O SP3
-    //  diz que algo passou pela entrada; quem diz que há caixa NOS ROLETES é
-    //  a balança, e só ela. Sem prazo de validade, uma previsão que não se
-    //  confirmasse (SP3 disparando sem caixa chegar, caixa parando antes)
-    //  deixava uma caixa PARADA na balança para sempre, sem nada real
-    //  embaixo. Ao chegar, a previsão tem 1,5 s para a balança confirmar;
-    //  passado isso, ela se desfaz. Em trânsito a animação manda; nos
-    //  roletes, o sensor.
+    //  Agora ha caixa na balanca exatamente quando o sensor diz que ha, na
+    //  posicao dos roletes. Nada e interpolado, nada e previsto.
     // =======================================================================
-    const sensor = p.celula.caixaNaEsteira;
-    if (sensor && !this.sensorPrev && this.feedX === null && !this.carregando) {
-      this.feedX = FEED.sealExit;          // boca da esteira
-      this.tEsperaBalanca = 0;
-    }
-    if (this.feedX !== null) {
-      if (naBalanca) {
-        this.feedX = PICK.r;               // a balança confirma: chegou
-        this.tEsperaBalanca = 0;
-      } else if (this.feedX > PICK.r) {
-        this.feedX = Math.max(PICK.r, this.feedX - FEED.vel * dt);
-      } else {
-        // Chegou aos roletes e a balança não confirma: dá um instante para o
-        // sensor assentar e, se nada vier, admite que não havia caixa.
-        this.tEsperaBalanca += dt;
-        if (this.tEsperaBalanca > 1.5) this.feedX = null;
-      }
-    }
-    // Saiu dos roletes (o robô pegou) ou está na garra: não há caixa na linha.
-    if (this.carregando || pegouAgora) this.feedX = null;
-    // Balança ocupada sem a animação ter começado (o gêmeo entrou no meio do
-    // ciclo): mostra a caixa já nos roletes, sem inventar viagem.
-    if (this.feedX === null && naBalanca && !this.carregando) {
-      this.feedX = PICK.r;
-      this.tEsperaBalanca = 0;
-    }
-    this.sensorPrev = sensor;
+    this.feedX = naBalanca && !this.carregando ? PICK.r : null;
 
     this.naBalancaPrev = naBalanca;
     this.qtdPrev = qtd;
 
+    // =======================================================================
+    //  `chegou` SÓ VALE SE FALAR DO TRECHO ATUAL
+    //
+    //  `Ptp.goTo` zera `chegou` quando o alvo muda, e o `goTo` acontece no FIM
+    //  deste método. Então, no quadro em que `wp` acaba de mudar, `chegou`
+    //  ainda é do trecho ANTERIOR — e decidir com ele é decidir com informação
+    //  velha. Duas consequências, as duas visíveis na tela:
+    //
+    //    - no quadro da pega, `wp` virava 2 (SOBE) e o avanço logo abaixo já
+    //      pulava para 3: a subida nunca acontecia;
+    //    - ao passar de 4 para 5, a soltura era avaliada no MESMO quadro com o
+    //      `chegou` do 4, então a caixa era largada na pose de APROXIMAÇÃO,
+    //      sem o braço nunca descer ao slot. Era o posicionamento errado.
+    //
+    //  `wpAlvo` guarda para qual trecho o `goTo` já foi emitido. Sem esse
+    //  alinhamento, nada avança e nada solta.
+    // =======================================================================
+    const alinhado = this.wpAlvo === this.wp;
+
     if (this.carregando) {
-      // Percorre SOBE -> GIRO -> APROX -> DEPOSITA e espera no destino até
-      // o contador confirmar. Quem diz "chegou" é a própria cinemática.
-      if (this.wp < 2) this.wp = 2;
-      if (this.wp < 5 && this.ptp.chegou) this.wp++;
+      if (this.wp < 2) {
+        this.wp = 2;                    // SOBE, com a caixa
+      } else if (alinhado && this.ptp.chegou) {
+        if (this.wp < 5) {
+          this.wp++;                    // SOBE -> GIRO -> APROX -> DEPOSITA
+        } else if (this.depositoContado) {
+          // SOLTA: o braço chegou ao slot E o CLP já contou. Em qualquer
+          // ordem — se o contador vier primeiro, o braço termina a viagem; se
+          // chegar primeiro, espera ali pela confirmação.
+          this.solta();
+        }
+      }
+      // Rede de segurança: 25 s sem fechar o ciclo significa que algo se
+      // perdeu (sinal, reconexão, caso não previsto). Solta o braço em vez de
+      // deixá-lo plantado no slot para sempre.
+      if (this.carregando && this.tCarregando > 25) this.solta();
     } else if (this.wp === 6) {
-      if (this.ptp.chegou) this.wp = 0;          // terminou de recuar
+      if (alinhado && this.ptp.chegou) this.wp = 0;   // terminou de recuar
     } else {
       // Livre: espera sobre a balança; desce quando a peça está liberada.
       const pronta = naBalanca && p.balanca.peso === 1;
@@ -320,6 +340,7 @@ export class MqttSource extends EventEmitter {
     }
 
     this.ptp.goTo(wps[this.wp].j);
+    this.wpAlvo = this.wp;
     this.ptp.step(dt, 100);
 
     const t = fkTcp(this.ptp.j);
@@ -481,11 +502,9 @@ export class MqttSource extends EventEmitter {
       feed: this.feedX === null
         ? null
         : {
-            x: this.feedX,
-            // Ainda deslizando na esteira, ou já nos roletes com o veredito
-            // da Toledo: 0 aguardando · 1 OK · 2 NOK.
-            status: this.feedX > PICK.r + 1 ? "CHEGANDO"
-                  : p.balanca.peso === 2 ? "REPROVADA"
+            x: this.feedX,                 // sempre os roletes: não há viagem
+            // O veredito da Toledo: 0 aguardando · 1 OK · 2 NOK.
+            status: p.balanca.peso === 2 ? "REPROVADA"
                   : p.balanca.peso === 1 ? "PRONTA"
                   : "PESANDO",
           },

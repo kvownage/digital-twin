@@ -284,15 +284,28 @@ function CaixaNaEsteira({ live, pick, box }: {
   box: { w: number; d: number; h: number };
 }) {
   const ref = useRef<THREE.Group>(null!);
+  const estava = useRef(false);
   useFrame((_s, dt) => {
     const st = live.current;
     if (!st) return;
-    ref.current.visible = st.feed !== null;
+    const tem = st.feed !== null;
+    ref.current.visible = tem;
+
     if (st.feed) {
-      // persegue a posiÃ§Ã£o de rede com amortecimento â€” anda liso a 60 fps
-      const k = Math.min(1, dt * 18);
-      ref.current.position.x += (st.feed.x - ref.current.position.x) * k;
+      if (!estava.current) {
+        // CAIXA NOVA: assume a posição de uma vez, sem perseguir.
+        //
+        // O amortecimento abaixo existe para suavizar 25 Hz de rede em 60 fps,
+        // não para animar uma entrada. Sem este caso, a caixa nova nascia onde
+        // a anterior parou — sobre a balança — e SUBIA A ESTEIRA DE RÉ até a
+        // boca antes de descer. Era o teletransporte.
+        ref.current.position.x = st.feed.x;
+      } else {
+        const k = Math.min(1, dt * 18);
+        ref.current.position.x += (st.feed.x - ref.current.position.x) * k;
+      }
     }
+    estava.current = tem;
   });
   return (
     <group ref={ref} position={[pick.r, pick.top + box.h / 2, 0]}>

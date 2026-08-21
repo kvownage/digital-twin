@@ -378,6 +378,16 @@ para o múltiplo de quatro após uma falha.</p>
 <strong>Vite 5</strong>, e <strong>three.js</strong> através de
 <code>@react-three/fiber</code> e <code>@react-three/drei</code>.</p>
 
+<p>Vale separar duas coisas que costumam ser citadas juntas. <strong>WebGL</strong> é
+a API do navegador para a GPU: ela não conhece cena, malha, luz nem sombra — conhece
+buffers de números, programas de <em>shader</em>, texturas e chamadas de desenho.
+<strong>three.js</strong> é a biblioteca que cria esses conceitos em cima dela: o
+grafo de cena (que faz a hierarquia de juntas S → L → U funcionar por composição de
+matrizes), a geração da malha a partir de curvas, o sombreamento baseado em física, os
+mapas de sombra, e a orquestração das chamadas de desenho a cada quadro. Fora do
+atributo <code>antialias</code> do contexto, este projeto não fala WebGL diretamente:
+não há um <em>shader</em> escrito à mão nem um buffer alocado à mão.</p>
+
 <p>A geometria é <strong>procedural</strong>, não malha de CAD: o corpo do robô, a
 esteira, a balança de roletes, a seladora e as caixas são construídos por código a
 partir de primitivas, com o braço inferior curvo saído de uma extrusão sobre curva
@@ -385,13 +395,31 @@ Catmull-Rom, e os rótulos (logotipo, marcas) desenhados em <code>CanvasTexture<
 Isso mantém o pacote em torno de 1 MB comprimido, em vez dos dezenas de megabytes de
 um STEP importado, e torna cada detalhe ajustável por parâmetro.</p>
 
-<p>Uma decisão de desempenho atravessa o cliente inteiro: o estado que chega a 25 Hz
-não vira <em>state</em> do React. Ele é escrito numa <em>ref</em>, e cada componente
-da cena o lê dentro de <code>useFrame</code>, interpolando na taxa do monitor. Sem
-isso, haveria 25 reconciliações por segundo numa árvore de centenas de objetos. A
-consequência arquitetural é clara: <strong>o servidor cronometra, o cliente
-interpola</strong> — inclusive as animações de chegada da caixa pela esteira e de
-saída do palete na empilhadeira, cujo progresso vem pronto do servidor.</p>
+<h3>Duas cadências, e a divisão de trabalho do React</h3>
+
+<p>O estado que chega do servidor a 25 Hz é entregue de <strong>duas formas
+simultâneas</strong>, e a distinção atravessa o cliente inteiro:</p>
+
+<ul>
+  <li>como <em>state</em> do React, que alimenta o <strong>painel de texto</strong>
+  — fases, contagens, lâmpadas de status. Aqui 25 renderizações por segundo são
+  baratas e apropriadas.</li>
+  <li>como <em>ref</em>, lida por cada componente da cena dentro de
+  <code>useFrame</code> e escrita <strong>direto no objeto three.js</strong>. É por
+  aqui que passam os ângulos das juntas, a caixa deslizando na esteira e o palete
+  saindo — interpolados na taxa do monitor, sem reconciliação nenhuma.</li>
+</ul>
+
+<p>O papel do React, então, é <strong>descrever o que existe</strong>: compor a cena
+em componentes e reconciliar as diferenças em objetos three.js — quando a pilha vai
+de 12 para 13 caixas, ele cria um objeto, não reconstrói o palete. <strong>Onde cada
+coisa está</strong> é decidido no laço de render, fora dele. Se o movimento passasse
+por <em>state</em>, cada quadro a 60 fps seria uma reconciliação de uma árvore de
+centenas de objetos.</p>
+
+<p>A consequência arquitetural fecha com a do servidor: <strong>o servidor cronometra,
+o cliente interpola</strong> — inclusive as animações de chegada da caixa e de saída
+do palete, cujo progresso vem pronto do servidor.</p>
 
 <h2><span class="num">9</span>Quadro de tecnologias</h2>
 
@@ -408,10 +436,11 @@ saída do palete na empilhadeira, cujo progresso vem pronto do servidor.</p>
     <tr><td>Servidor</td><td>ws</td><td class="mono">8.18</td><td>WebSocket de estado a 25 Hz</td></tr>
     <tr><td>Servidor</td><td>cookie-session</td><td class="mono">2.1</td><td>Sessão assinada, compartilhada com o WebSocket</td></tr>
     <tr><td>Servidor</td><td>OAuth 2.0 Google</td><td class="mono">—</td><td>Login restrito ao domínio corporativo</td></tr>
-    <tr><td>Cliente</td><td>React</td><td class="mono">18.3</td><td>Estrutura da interface e da cena</td></tr>
-    <tr><td>Cliente</td><td>three.js</td><td class="mono">0.168</td><td>WebGL: geometria, materiais, sombras</td></tr>
-    <tr><td>Cliente</td><td>@react-three/fiber</td><td class="mono">8.17</td><td>three.js declarativo em React</td></tr>
-    <tr><td>Cliente</td><td>@react-three/drei</td><td class="mono">9.114</td><td>Controles de órbita, grade, utilidades</td></tr>
+    <tr><td>Cliente</td><td>React</td><td class="mono">18.3</td><td>Descreve <em>o que existe</em>: compõe a cena e reconcilia as diferenças</td></tr>
+    <tr><td>Cliente</td><td>@react-three/fiber</td><td class="mono">8.17</td><td>Renderizador do React para three.js: JSX vira objeto de cena</td></tr>
+    <tr><td>Cliente</td><td>@react-three/drei</td><td class="mono">9.114</td><td>Controles de órbita, grade, utilidades sobre three.js</td></tr>
+    <tr><td>Cliente</td><td>three.js</td><td class="mono">0.168</td><td>Grafo de cena, geometria, materiais, sombras, ordem de desenho — e gera o GLSL</td></tr>
+    <tr><td>Cliente</td><td>WebGL</td><td class="mono">API do navegador</td><td>Canal até a GPU: buffers, shaders, texturas, chamadas de desenho</td></tr>
     <tr><td>Build</td><td>Vite</td><td class="mono">5.4</td><td>Bundler e servidor de desenvolvimento</td></tr>
     <tr><td>Todo</td><td>TypeScript</td><td class="mono">5.6</td><td>Tipagem estrita ponta a ponta, contrato compartilhado</td></tr>
     <tr><td>Dev</td><td>tsx · concurrently · aedes</td><td class="mono">—</td><td>Execução direta de TS, orquestração, broker local</td></tr>

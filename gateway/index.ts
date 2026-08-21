@@ -34,6 +34,13 @@ const TOPICO = process.env.MQTT_TOPICO ?? "multilaser/paletizadora/r01/estado";
 const POLL_MS = 100;
 const QTD_REG = 35;                  // HR0..HR34 (o mapa completo da FC 07)
 const HEARTBEAT_TIMEOUT_MS = 2000;
+// SINAL DE VIDA. Publicar só quando muda economiza rede, mas cria um engano:
+// célula parada com o CLP rodando não muda NADA, então o gateway ficava
+// mudo — e o supervisório, que exige mensagem com menos de 2 s, anunciava
+// "SEM DADOS REAIS" com todo o caminho funcionando. Silêncio não é falha.
+// Uma publicação por segundo, mesmo sem novidade, faz o frescor significar o
+// que ele deve significar: o gateway está vivo.
+const VIDA_MS = 1000;
 
 // Int16 chega como UInt16 do modbus-serial — devolve o sinal.
 const int16 = (v: number) => (v > 0x7fff ? v - 0x10000 : v);
@@ -57,12 +64,19 @@ let conectado = false;
 let ultimoHb = -1;
 let ultimoHbTs = 0;
 let ultimoJson = "";
+let ultimoEnvio = 0;
+let ultimoPayload: RealPayload | null = null;
+let lendo = false;                   // uma leitura Modbus de cada vez
 
 async function conecta() {
   try {
     await modbus.connectTCP(PLC_IP, { port: PLC_PORT });
     modbus.setID(PLC_UNIT);
-    modbus.setTimeout(500);
+    // 1,5 s, não 500 ms: são 35 holdings num S7 que também atende a balança
+    // na 502, em rede de fábrica. Meio segundo é aperto suficiente para dar
+    // timeout por congestionamento e derrubar a conexão sem haver falha
+    // nenhuma — foi o que aconteceu.
+    modbus.setTimeout(1500);
     conectado = true;
     console.log(`[gateway] CLP OK: ${PLC_IP}:${PLC_PORT}`);
   } catch (e) {
@@ -73,7 +87,12 @@ async function conecta() {
 }
 
 async function le() {
-  if (!conectado) return;
+  if (!conectado || lendo) return;
+  // A trava importa: `le` é chamada a cada 100 ms sem esperar a anterior. Numa
+  // leitura demorada, dezenas de requisições se empilhavam na MESMA conexão
+  // Modbus, e o congestionamento que causou o primeiro timeout passava a
+  // causar todos os seguintes. Uma leitura de cada vez.
+  lendo = true;
   try {
     const { data } = await modbus.readHoldingRegisters(0, QTD_REG);
 
@@ -186,20 +205,47 @@ async function le() {
       autoManual: int16(data[34]),
     };
 
-    // publica só quando muda (o ts fica de fora da comparação)
+    // Publica quando MUDA, e de qualquer forma uma vez por segundo — este
+    // segundo é o sinal de vida (ver VIDA_MS). O ts fica fora da comparação,
+    // senão toda leitura pareceria diferente e a comparação não filtraria
+    // nada.
     const { ts: _ts, ...semTs } = payload;
     const json = JSON.stringify(semTs);
-    if (json !== ultimoJson) {
+    if (json !== ultimoJson || agora - ultimoEnvio >= VIDA_MS) {
       ultimoJson = json;
+      ultimoEnvio = agora;
       broker.publish(TOPICO, JSON.stringify(payload), { retain: true });
     }
+    ultimoPayload = payload;
   } catch (e) {
     console.error(`[gateway] leitura falhou: ${(e as Error).message}`);
     conectado = false;
     modbus.close(() => {});
     setTimeout(conecta, 3000);
+  } finally {
+    lendo = false;
   }
 }
+
+// ----------------------------------------------------------------------------
+//  SEM CONTATO COM O CLP: dizer isso, em vez de calar
+//
+//  A publicação mora dentro da leitura bem-sucedida. Quando o Modbus dá
+//  timeout, o gateway parava de publicar — e a última mensagem RETIDA no
+//  broker continuava afirmando `plcOk: true` para sempre. Quem chegasse depois
+//  lia uma mentira com cara de verdade.
+//
+//  Enquanto não há contato, republica-se o último retrato conhecido com
+//  `plcOk: false` e hora nova. O supervisório mostra SEM DADOS REAIS pelo
+//  motivo certo, e a retida passa a contar o que está acontecendo.
+// ----------------------------------------------------------------------------
+setInterval(() => {
+  if (conectado || !ultimoPayload) return;   // nada a dizer que já não se disse
+  broker.publish(
+    TOPICO,
+    JSON.stringify({ ...ultimoPayload, ts: Date.now(), plcOk: false }),
+    { retain: true });
+}, VIDA_MS);
 
 conecta();
 setInterval(le, POLL_MS);

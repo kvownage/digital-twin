@@ -162,8 +162,14 @@ try {
 // Os comandos de SIMULAÇÃO (pausar, ritmo, turbo, prévia, reiniciar) seguem
 // globais de propósito: existe UM simulador no servidor, e todos que o
 // estiverem assistindo veem o mesmo robô — como numa máquina de verdade.
+//
+// O PADRÃO É REAL. Isto é um supervisório: quem abre a tela quer ver a
+// célula, não uma demonstração. Abrir no simulador tinha um risco pior do que
+// a inconveniência — alguém olhando um robô que se move bonito e concluindo
+// que a linha está produzindo. O simulador continua a um clique, e quando a
+// fonte real não entrega, a tela diz SEM DADOS em vez de fingir movimento.
 const fonteDe = new WeakMap<WebSocket, "sim" | "real">();
-const fonteDo = (c: WebSocket) => fonteDe.get(c) ?? "sim";
+const fonteDo = (c: WebSocket) => fonteDe.get(c) ?? "real";
 
 function broadcast(state: RobotState, de: "sim" | "real") {
   let data: string | null = null;

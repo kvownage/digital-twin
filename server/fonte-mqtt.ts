@@ -25,7 +25,10 @@ import type { PlacedBox, RealPayload, RobotState } from "../shared/types.js";
 import { fkTcp, route, slot, PER_PALLET, TOTAL, PICK, FEED, PHASES } from "./simulator.js";
 import { Ptp } from "./ptp.js";
 
-const FRESCOR_MS = 2000;
+// O gateway manda sinal de vida a cada 1 s (VIDA_MS lá). Cinco segundos aqui
+// aguentam um engasgo de rede sem piscar SEM DADOS REAIS na cara do operador,
+// e ainda denunciam um caminho morto em cinco segundos.
+const FRESCOR_MS = 5000;
 const TICK_MS = 40;                 // 25 Hz: o mesmo passo do simulador na rede
 
 export class MqttSource extends EventEmitter {

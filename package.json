@@ -8,6 +8,7 @@
     "build": "vite build",
     "start": "tsx server/index.ts",
     "gateway": "tsx gateway/index.ts",
+    "pacote-gateway": "esbuild gateway/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist-gateway/index.cjs --external:serialport --external:@serialport/* && esbuild gateway/testa-modbus.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist-gateway/testa-modbus.cjs --external:serialport --external:@serialport/*",
     "clp-falso": "tsx gateway/clp-falso.ts",
     "testa-modbus": "tsx gateway/testa-modbus.ts"
   },

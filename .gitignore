@@ -1,6 +1,8 @@
 # dependências e build
 node_modules/
 client/dist/
+# pacote de arquivo unico do gateway: gerado por `npm run pacote-gateway`
+dist-gateway/
 
 # segredos — NUNCA no repositório
 .env

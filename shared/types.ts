@@ -30,6 +30,13 @@ export interface RobotState {
    *  desenha nem o palete nem a pilha — nada de pilha fantasma. */
   paleteA: boolean;
   paleteB: boolean;
+  /** SAÍDA do palete: 0 = no lugar · 1 = já saiu de cena. Entre os dois, a
+   *  empilhadeira está levando o palete pelo lado livre (o que não tem
+   *  batente). Quem cronometra é o SERVIDOR, não o navegador: enquanto o
+   *  progresso não chega a 1 a pilha daquele lado continua em `placed`, senão
+   *  sairia um palete vazio e as caixas evaporariam no lugar. */
+  saidaA: number;
+  saidaB: number;
   /** Célula em emergência: o braço congela onde estava. */
   emergencia: boolean;
   /** Paletes completos produzidos (contador do CLP). */

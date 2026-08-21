@@ -146,11 +146,13 @@ type Passo = (i: number) => { x: number; z: number; rot: number };
 //  corrigido pelo operador. Mudar o padrão = editar estas tabelas, nada mais.
 // ============================================================================
 
-// PALETE A · camada de BAIXO (conferida e aprovada)
+// PALETE A · camada de BAIXO — o operador trocou 2 e 3 de ordem: o grupo do
+// lado do robô (z = -300) sai antes do que fica no fundo (z = +300). O
+// desenho final é o mesmo catavento; muda só quem é montado primeiro.
 const TAB_A0: Passo[] = [
   (i) => ({ x: -300,           z: -475 + i * 150, rot: 0  }),   // 1: coluna ↓
-  (i) => ({ x: -475 + i * 150, z: 300,            rot: 90 }),   // 2: borda → centro
-  (i) => ({ x: 25 + i * 150,   z: -300,           rot: 90 }),   // 3: centro → borda
+  (i) => ({ x: 25 + i * 150,   z: -300,           rot: 90 }),   // 2: centro → borda
+  (i) => ({ x: -475 + i * 150, z: 300,            rot: 90 }),   // 3: borda → centro
   (i) => ({ x: 300,            z: 25 + i * 150,   rot: 0  }),   // 4: coluna ↓
 ];
 
@@ -536,6 +538,11 @@ export class Gp12Simulator extends EventEmitter {
       paletesProduzidos: 0,
       paleteA: !this.trocando,
       paleteB: !this.trocando,
+      // Na troca os dois paletes saem de cena na empilhadeira, cada um pelo
+      // seu lado livre — as caixas vão em cima, porque `placed` só é limpo
+      // ao fim dos 3,5 s. O progresso sai direto do relógio da troca.
+      saidaA: this.trocando ? Math.min(1, this.dwell / 2.2) : 0,
+      saidaB: this.trocando ? Math.min(1, this.dwell / 2.2) : 0,
       fonte: "sim",
       realOk: false,        // o index.ts sobrescreve com o frescor da fonte real
       tcp: fkTcp(this.j),

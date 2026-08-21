@@ -15,18 +15,52 @@ const rad = (d: number) => (d * Math.PI) / 180;
 const PAPELAO = "#A97C4B";
 const MADEIRA = "#7A5C36";
 
-/** Mostra os filhos sÃ³ enquanto o sensor de palete (SP4/SP5) daquele lado
- *  estiver ativo. Some junto com o palete â€” sem pilha fantasma. */
-function Presenca({ live, lado, children }: {
+/** Quanto o palete anda para sair de cena, em mm. Passa da borda do chão
+ *  visível — quando termina, já não há nada para ver. */
+const SAIDA_MM = 5200;
+
+/** O palete de um lado E a pilha dele, num grupo só.
+ *
+ *  Enquanto o sensor (SP4/SP5) enxerga, fica parado no lugar. Quando o sensor
+ *  cai, o servidor manda o progresso da saída (0..1) e este grupo desliza para
+ *  o lado LIVRE — o que não tem batente, que é o lado de fora, longe do robô.
+ *  É por onde a empilhadeira entra de verdade.
+ *
+ *  Palete e caixas juntos de propósito: se cada caixa animasse por conta, um
+ *  quadro de diferença já apareceria como pilha se desmanchando no ar. */
+function SaidaDoPalete({ live, lado, dirZ, children }: {
   live: React.MutableRefObject<RobotState | null>;
   lado: "A" | "B";
+  dirZ: 1 | -1;
   children: React.ReactNode;
 }) {
   const ref = useRef<THREE.Group>(null!);
-  useFrame(() => {
+  const foraDeCena = useRef(false);
+  useFrame((_s, dt) => {
     const st = live.current;
     if (!st) return;
-    ref.current.visible = lado === "A" ? st.paleteA : st.paleteB;
+    const presente = lado === "A" ? st.paleteA : st.paleteB;
+    const u = lado === "A" ? st.saidaA : st.saidaB;
+
+    // Some só quando a saída termina. Ausente com a saída em curso continua
+    // visível: é a empilhadeira atravessando a cena com a carga.
+    ref.current.visible = presente || u < 1;
+
+    if (!presente && u >= 1) foraDeCena.current = true;
+    if (presente && foraDeCena.current) {
+      // Palete NOVO no lugar: aparece parado, não vem voando de volta do
+      // fundo da cena. O que saiu, saiu.
+      ref.current.position.z = 0;
+      foraDeCena.current = false;
+      return;
+    }
+
+    // u² : arranca devagar e ganha velocidade, como empilhadeira saindo.
+    // Se o sensor voltar antes de a saída terminar (palete só reposicionado),
+    // o alvo é zero e ele volta deslizando — que é o que se vê no chão.
+    const alvo = presente ? 0 : dirZ * SAIDA_MM * u * u;
+    const k = Math.min(1, dt * 12);
+    ref.current.position.z += (alvo - ref.current.position.z) * k;
   });
   return <group ref={ref}>{children}</group>;
 }
@@ -324,27 +358,27 @@ export function Cell({ live, layout, placed }: {
       <Batente z={-layout.pallet.r} size={layout.pallet.size} lado={-1} />
       <Batente z={+layout.pallet.r} size={layout.pallet.size} lado={+1} />
 
-      {/* Palete sÃ³ existe se o sensor (SP4/SP5) enxerga. Sem palete, nada de
-          desenhar pilha flutuando no ar. */}
-      <Presenca live={live} lado="A">
-        <Palete z={-layout.pallet.r} size={layout.pallet.size} top={layout.pallet.top} />
-      </Presenca>
-      <Presenca live={live} lado="B">
-        <Palete z={+layout.pallet.r} size={layout.pallet.size} top={layout.pallet.top} />
-      </Presenca>
+      {/* Cada lado é UM conjunto: o palete e a pilha que está sobre ele. Sem
+          palete no sensor não se desenha pilha flutuando no ar, e quando a
+          empilhadeira leva o palete a carga vai com ele — o batente amarelo
+          fica, marcando o lugar vazio.
+
+          A direção da saída é o lado LIVRE de cada posição: o batente fecha o
+          lado do robô e o lado da balança, então sobra o fundo da cena. */}
+      {([[-1, "A"], [+1, "B"]] as const).map(([lado, nome]) => (
+        <SaidaDoPalete key={nome} live={live} lado={nome} dirZ={lado}>
+          <Palete z={lado * layout.pallet.r} size={layout.pallet.size} top={layout.pallet.top} />
+          {placed
+            .filter((p) => (p.z < 0 ? "A" : "B") === nome)
+            .map((p, i) => (
+              <group key={i} position={[p.x, p.y, p.z]} rotation-y={rad(p.rot)}>
+                <CaixaVentilador w={layout.box.w} h={layout.box.h} d={layout.box.d} />
+              </group>
+            ))}
+        </SaidaDoPalete>
+      ))}
 
       <CaixaNaEsteira live={live} pick={layout.pick} box={layout.box} />
-
-      {/* a pilha: cada caixa depositada, na posiÃ§Ã£o e orientaÃ§Ã£o do padrÃ£o.
-          Cada caixa segue o sensor do SEU lado â€” palete retirado leva a pilha
-          embora, que Ã© o que os olhos veem no chÃ£o de fÃ¡brica. */}
-      {placed.map((p, i) => (
-        <Presenca key={i} live={live} lado={p.z < 0 ? "A" : "B"}>
-          <group position={[p.x, p.y, p.z]} rotation-y={rad(p.rot)}>
-            <CaixaVentilador w={layout.box.w} h={layout.box.h} d={layout.box.d} />
-          </group>
-        </Presenca>
-      ))}
 
       <group position={[0, layout.pedestal, 0]}>
         <Robot live={live} />

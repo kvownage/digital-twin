@@ -22,7 +22,7 @@
 import { EventEmitter } from "node:events";
 import mqtt from "mqtt";
 import type { PlacedBox, RealPayload, RobotState } from "../shared/types.js";
-import { fkTcp, route, slot, PER_PALLET, TOTAL, PICK, PHASES } from "./simulator.js";
+import { fkTcp, route, slot, PER_PALLET, TOTAL, PICK, FEED, PHASES } from "./simulator.js";
 import { Ptp } from "./ptp.js";
 
 const FRESCOR_MS = 2000;
@@ -41,6 +41,14 @@ export class MqttSource extends EventEmitter {
   private qtdPrev = -1;             // para detectar o depósito
   private vacuoPrev = false;        // o vácuo é NÍVEL: precisa de borda
   private tCarregando = 0;          // s carregando — rede de segurança
+  // ---- a caixa vindo pela esteira ----
+  private feedX: number | null = null;   // posição no eixo da linha, ou null
+  private sensorPrev = false;            // borda do SP3 (esteira de entrada)
+  // ---- os paletes indo embora na empilhadeira ----
+  private pal = {
+    A: { pres: null as boolean | null, saida: 1, cheio: false, usado: false },
+    B: { pres: null as boolean | null, saida: 1, cheio: false, usado: false },
+  };
   private tcpPrev: { x: number; y: number; z: number } | null = null;
   private tcpSpeed = 0;
 
@@ -97,15 +105,34 @@ export class MqttSource extends EventEmitter {
       && this.last.plcOk;
   }
 
-  /** Contagem por lado. UM contador serve aos dois paletes: a célula termina
-   *  um e começa o outro, e os bits LADO 1/2 ATIVO dizem de quem ele é. */
-  private contagens(p: RealPayload) {
+  /** UM contador serve aos dois paletes: a célula fecha um e começa o outro,
+   *  e os bits LADO 1/2 ATIVO dizem de quem ele é. Isto é o ROTEAMENTO — em
+   *  que caixa o robô está trabalhando. Vem só dos sinais, sem memória: é o
+   *  que aponta o braço, e apontar errado é o pior defeito possível. */
+  private roteamento(p: RealPayload) {
     const qtd = Math.max(0, Math.min(PER_PALLET, p.qtdeLado1));
     const noLado2 = p.robo.lado2 && !p.robo.lado1;
+    return { noLado2, qtd, boxIndex: (noLado2 ? PER_PALLET : 0) + qtd };
+  }
+
+  /** Quantas caixas há EM CIMA de cada palete, para desenhar.
+   *
+   *  Diferente do roteamento, e o motivo é físico: o lado que o robô não está
+   *  atendendo tem ou um palete CHEIO esperando a empilhadeira, ou um palete
+   *  vazio recém-posto. O contador do CLP não distingue os dois — ele só fala
+   *  do lado ativo. Quem distingue é a memória de `pal`: o robô paletizou
+   *  ali e o sensor de presença não caiu desde então, logo está cheio.
+   *
+   *  A versão anterior chutava: lado A inativo = cheio, lado B inativo = 0.
+   *  Assimétrico, e errado na volta para o lado 1 — o palete B cheio sumia
+   *  da tela no mesmo quadro, sem empilhadeira nenhuma. */
+  private contagens(p: RealPayload) {
+    const { noLado2, qtd } = this.roteamento(p);
+    const parado = (l: "A" | "B") => (this.pal[l].cheio ? PER_PALLET : 0);
     return {
       noLado2,
-      countA: noLado2 ? PER_PALLET : qtd,
-      countB: noLado2 ? qtd : 0,
+      countA: noLado2 ? parado("A") : qtd,
+      countB: noLado2 ? qtd : parado("B"),
     };
   }
 
@@ -121,6 +148,19 @@ export class MqttSource extends EventEmitter {
       return;
     }
 
+    // Os paletes vêm ANTES do desvio de emergência, e isso é de propósito:
+    // tirar um palete exige abrir a porta, e abrir a porta derruba a
+    // segurança. Se este trecho ficasse depois do `return`, o palete nunca
+    // sairia de cena justamente na única situação em que ele sai.
+    // "Ativo" sai dos bits crus, não de `noLado2`: com os DOIS bits em zero
+    // (robô em home, em falha) nenhum lado é ativo, e nenhum dos dois pode
+    // perder a marca de cheio por isso.
+    const rota = this.roteamento(p);
+    this.moveDoPalete("A", p.celula.palete1,
+      p.robo.lado1 && !p.robo.lado2, rota.qtd, dt);
+    this.moveDoPalete("B", p.celula.palete2,
+      p.robo.lado2 && !p.robo.lado1, rota.qtd, dt);
+
     // EMERGÊNCIA: o robô para ONDE ESTAVA. Nada de terminar o movimento em
     // curso, nada de recolher — é o que a célula real faz quando a categoria
     // de segurança corta a potência.
@@ -129,8 +169,7 @@ export class MqttSource extends EventEmitter {
       return;
     }
 
-    const { countA, countB } = this.contagens(p);
-    const boxIndex = Math.max(0, Math.min(TOTAL - 1, countA + countB));
+    const boxIndex = Math.min(TOTAL - 1, rota.boxIndex);
     const wps = route(boxIndex);
 
     // =======================================================================
@@ -185,12 +224,17 @@ export class MqttSource extends EventEmitter {
       this.carregando = true;
       this.tCarregando = 0;
       this.wp = 2;                    // SOBE, com a caixa
-    } else if (pegouAgora && this.carregando) {
-      // Nova pega com o gêmeo AINDA carregando: a animação ficou atrás da
-      // célula. Fecha o ciclo anterior na hora e começa o novo — melhor um
-      // corte seco do que mostrar duas caixas em trânsito ao mesmo tempo.
+    } else if (pegouAgora) {
+      // SEGUNDA borda da MESMA pega — e ela SEMPRE acontece: o vácuo liga
+      // primeiro, e só depois a caixa deixa de tapar o sensor da balança.
+      // São dois eventos, um único apanhar.
+      //
+      // A versão anterior refazia `wp = 2` aqui, e o braço VOLTAVA para a
+      // altura de subida no meio do caminho até o palete — era esse o
+      // movimento estranho no lado 1. Uma pega nova só pode existir depois
+      // de um depósito, e depósito zera `carregando`; então, carregando, a
+      // borda é da mesma caixa. Renova só o cão de guarda.
       this.tCarregando = 0;
-      this.wp = 2;
     }
 
     if (this.carregando) {
@@ -203,6 +247,37 @@ export class MqttSource extends EventEmitter {
         this.wp = 6;                  // RECUA
       }
     }
+    // =======================================================================
+    //  A CAIXA CHEGANDO PELA ESTEIRA
+    //
+    //  Antes a caixa simplesmente APARECIA sobre a balança. Agora o sensor de
+    //  entrada (SP3) dispara a viagem: a caixa nasce na boca da esteira e
+    //  desliza até os roletes na velocidade da correia. O atraso entre o
+    //  sensor acionar e a caixa chegar de fato é o tempo real do percurso —
+    //  não é enfeite, é o que acontece na linha.
+    //
+    //  Se a balança confirmar antes de a animação terminar (esteira mais
+    //  rápida do que o estimado), a caixa é encaixada nos roletes na hora:
+    //  o sinal manda, a animação obedece.
+    // =======================================================================
+    const sensor = p.celula.caixaNaEsteira;
+    if (sensor && !this.sensorPrev && this.feedX === null && !this.carregando) {
+      this.feedX = FEED.sealExit;          // boca da esteira
+    }
+    if (this.feedX !== null) {
+      if (naBalanca) {
+        this.feedX = PICK.r;               // a balança confirma: chegou
+      } else if (this.feedX > PICK.r) {
+        this.feedX = Math.max(PICK.r, this.feedX - FEED.vel * dt);
+      }
+    }
+    // Saiu da balança (o robô pegou) ou está na garra: não há caixa na linha.
+    if (this.carregando || saiuDaBalanca) this.feedX = null;
+    // Balança ocupada sem a animação ter começado (o gêmeo entrou no meio do
+    // ciclo): mostra a caixa já nos roletes, sem inventar viagem.
+    if (this.feedX === null && naBalanca && !this.carregando) this.feedX = PICK.r;
+    this.sensorPrev = sensor;
+
     this.naBalancaPrev = naBalanca;
     this.qtdPrev = qtd;
     this.vacuoPrev = vacuo;
@@ -231,6 +306,70 @@ export class MqttSource extends EventEmitter {
     this.tcpPrev = t;
   }
 
+  // --------------------------------------------------------------------------
+  //  O PALETE INDO EMBORA
+  //
+  //  O sensor de presença (SP4/SP5) cair não é só "apagar o palete": é a
+  //  empilhadeira entrando e levando o palete COM a pilha em cima. Aqui se
+  //  cronometra essa saída, e o cliente só interpola.
+  //
+  //  Tem uma segunda consequência, menos óbvia. UM contador serve aos dois
+  //  paletes, e enquanto o robô trabalha no lado 2 o lado 1 é reportado como
+  //  cheio (32). Se o operador tira o palete 1 e põe um vazio no lugar, o
+  //  contador não muda nada — a tela redesenharia 32 caixas sobre um palete
+  //  que acabou de chegar vazio. Por isso o lado retirado fica marcado, e
+  //  volta a contar só quando o robô de fato voltar a paletizar nele.
+  // --------------------------------------------------------------------------
+  private static readonly SAIDA_S = 2.2;   // o tempo da empilhadeira sair
+
+  private moveDoPalete(
+    lado: "A" | "B", presente: boolean, ativo: boolean, qtd: number, dt: number,
+  ) {
+    const e = this.pal[lado];
+
+    // Primeira mensagem: só sincroniza. Sem palete no sensor não se inventa
+    // uma saída que ninguém viu acontecer.
+    if (e.pres === null) {
+      e.pres = presente;
+      e.saida = presente ? 0 : 1;
+      // Palete presente num lado que o robô NÃO está atendendo: é o que ele
+      // acabou de fechar. A célula alterna 1 e 2, então essa é a leitura de
+      // longe mais provável — e é a única que faz a tela abrir certa no meio
+      // de um turno.
+      e.cheio = presente && !ativo;
+    }
+
+    if (e.pres && !presente) {            // borda de queda: a empilhadeira entrou
+      e.saida = 0;
+      e.usado = false;
+      // `cheio` NÃO cai aqui: a carga está saindo EM CIMA do palete e
+      // precisa continuar desenhada durante o trajeto. Zerar na borda fazia
+      // o palete atravessar a cena vazio e as 32 caixas evaporarem no lugar.
+    }
+    if (!e.pres && presente) e.saida = 0; // palete novo no lugar
+    e.pres = presente;
+
+    if (!presente && e.saida < 1) {
+      e.saida = Math.min(1, e.saida + dt / MqttSource.SAIDA_S);
+      // Saiu de cena: agora sim a carga deixou de existir aqui. Um palete
+      // novo entra vazio, mesmo com o contador do CLP marcando 32.
+      if (e.saida >= 1) e.cheio = false;
+    }
+    if (presente) e.saida = 0;
+
+    if (ativo) {
+      // O robô está paletizando aqui: o contador do CLP é deste lado.
+      e.cheio = false;
+      if (qtd > 0) e.usado = true;
+    } else if (e.usado) {
+      // Acabou de deixar de ser o lado ativo depois de ter recebido caixas:
+      // o que ficou ali é um palete CHEIO, e ele fica visível até alguém
+      // levar. Sem isto, fechar o palete fazia a pilha evaporar na troca.
+      e.cheio = true;
+      e.usado = false;
+    }
+  }
+
   /** A pilha reconstituída dos contadores, pelas mesmas tabelas do padrão. */
   private pilha(a: number, b: number): PlacedBox[] {
     const out: PlacedBox[] = [];
@@ -256,7 +395,8 @@ export class MqttSource extends EventEmitter {
         feed: null, peso: 0, running: false, ritmo: 0, turbo: 1,
         fonte: "real", realOk: false, tcp: fkTcp([0, -5, -50]), speed: 0,
         placed: [], boxIndex: 0, boxTotal: TOTAL, descartadas: 0, carryRot: 0,
-        paleteA: false, paleteB: false, emergencia: false, paletesProduzidos: 0,
+        paleteA: false, paleteB: false, saidaA: 1, saidaB: 1,
+        emergencia: false, paletesProduzidos: 0,
         status: {
           remoto: false, servoOn: false, emCiclo: false, emHome: false,
           falha: false, almRobo: 0, automatico: false, portas: false,
@@ -268,8 +408,13 @@ export class MqttSource extends EventEmitter {
       };
     }
 
-    const { noLado2, countA, countB } = this.contagens(p);
-    const boxIndex = Math.max(0, Math.min(TOTAL - 1, countA + countB));
+    const { countA, countB } = this.contagens(p);
+    // O braço é apontado pelo ROTEAMENTO, que sai direto dos bits de lado.
+    // A contagem visível não entra aqui: um palete retirado zera o desenho
+    // daquele lado, e se isso mexesse no roteamento o braço iria trabalhar
+    // no palete errado.
+    const { noLado2, boxIndex: bi } = this.roteamento(p);
+    const boxIndex = Math.min(TOTAL - 1, bi);
     const sl = slot(noLado2 ? -1 : 1, boxIndex % PER_PALLET);
     const j = this.ptp.j;
 
@@ -288,19 +433,17 @@ export class MqttSource extends EventEmitter {
       // pouco atrás, e o resultado na tela era ver a MESMA caixa em dois
       // lugares: na garra e na balança. Confunde mais do que informa.
       // A caixa reaparece na balança quando o braço solta a que está levando.
-      feed: this.carregando
+      feed: this.feedX === null
         ? null
-        : p.balanca.pecaEmPosicao
-          ? {
-              x: PICK.r,
-              // O veredito da Toledo: 0 aguardando · 1 OK · 2 NOK.
-              status: p.balanca.peso === 2 ? "REPROVADA"
-                    : p.balanca.peso === 1 ? "PRONTA"
-                    : "PESANDO",
-            }
-          : p.celula.caixaNaEsteira
-            ? { x: PICK.r + 700, status: "CHEGANDO" }   // posição estimada
-            : null,
+        : {
+            x: this.feedX,
+            // Ainda deslizando na esteira, ou já nos roletes com o veredito
+            // da Toledo: 0 aguardando · 1 OK · 2 NOK.
+            status: this.feedX > PICK.r + 1 ? "CHEGANDO"
+                  : p.balanca.peso === 2 ? "REPROVADA"
+                  : p.balanca.peso === 1 ? "PRONTA"
+                  : "PESANDO",
+          },
       // A balança publica veredito (OK/NOK), não o valor em kg — o peso em
       // número exigiria mais uma holding do lado dela.
       peso: p.balanca.peso === 1 ? 1 : 0,
@@ -309,6 +452,8 @@ export class MqttSource extends EventEmitter {
       turbo: 1,
       paleteA: p.celula.palete1,
       paleteB: p.celula.palete2,
+      saidaA: this.pal.A.saida,
+      saidaB: this.pal.B.saida,
       emergencia: p.celula.emergencia,
       paletesProduzidos: p.paletesProduzidos ?? 0,
       status: {

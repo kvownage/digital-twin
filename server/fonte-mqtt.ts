@@ -50,8 +50,8 @@ export class MqttSource extends EventEmitter {
   private tEsperaBalanca = 0;            // s esperando a balança confirmar
   // ---- os paletes indo embora na empilhadeira ----
   private pal = {
-    A: { pres: null as boolean | null, saida: 1, cheio: false, usado: false },
-    B: { pres: null as boolean | null, saida: 1, cheio: false, usado: false },
+    A: { pres: null as boolean | null, saida: 1, caixas: 0, qtdAnt: 0 },
+    B: { pres: null as boolean | null, saida: 1, caixas: 0, qtdAnt: 0 },
   };
   private tcpPrev: { x: number; y: number; z: number } | null = null;
   private tcpSpeed = 0;
@@ -121,22 +121,26 @@ export class MqttSource extends EventEmitter {
 
   /** Quantas caixas há EM CIMA de cada palete, para desenhar.
    *
-   *  Diferente do roteamento, e o motivo é físico: o lado que o robô não está
-   *  atendendo tem ou um palete CHEIO esperando a empilhadeira, ou um palete
-   *  vazio recém-posto. O contador do CLP não distingue os dois — ele só fala
-   *  do lado ativo. Quem distingue é a memória de `pal`: o robô paletizou
-   *  ali e o sensor de presença não caiu desde então, logo está cheio.
-   *
-   *  A versão anterior chutava: lado A inativo = cheio, lado B inativo = 0.
-   *  Assimétrico, e errado na volta para o lado 1 — o palete B cheio sumia
-   *  da tela no mesmo quadro, sem empilhadeira nenhuma. */
+   *  Diferente do roteamento, e o motivo é físico: o contador do CLP fala só
+   *  do lado ATIVO. O outro lado pode ter um palete fechado esperando a
+   *  empilhadeira, um palete interrompido no meio, ou um vazio recém-posto —
+   *  e o contador não distingue nenhum dos três. Quem distingue é a memória
+   *  de `pal.caixas`, que segue o contador enquanto o lado é atendido e
+   *  congela quando deixa de ser. */
   private contagens(p: RealPayload) {
-    const { noLado2, qtd } = this.roteamento(p);
-    const parado = (l: "A" | "B") => (this.pal[l].cheio ? PER_PALLET : 0);
+    const { noLado2 } = this.roteamento(p);
+    // `caixas` JÁ É a contagem desenhada: enquanto o lado é o ativo ela segue
+    // o contador do CLP, e quando deixa de ser fica congelada no último valor
+    // visto. Ver moveDoPalete.
+    return { noLado2, countA: this.pal.A.caixas, countB: this.pal.B.caixas };
+  }
+
+  /** Qual lado o robô está atendendo AGORA. Os dois falsos é resposta válida:
+   *  significa "nenhum", e não deve ser confundido com "o lado 1". */
+  private static ativos(p: RealPayload) {
     return {
-      noLado2,
-      countA: noLado2 ? parado("A") : qtd,
-      countB: noLado2 ? qtd : parado("B"),
+      a: p.robo.lado1 && !p.robo.lado2,
+      b: p.robo.lado2 && !p.robo.lado1,
     };
   }
 
@@ -157,13 +161,13 @@ export class MqttSource extends EventEmitter {
     // segurança. Se este trecho ficasse depois do `return`, o palete nunca
     // sairia de cena justamente na única situação em que ele sai.
     // "Ativo" sai dos bits crus, não de `noLado2`: com os DOIS bits em zero
-    // (robô em home, em falha) nenhum lado é ativo, e nenhum dos dois pode
-    // perder a marca de cheio por isso.
+    // (robô em home, em falha, fora do automático) nenhum lado é ativo, e o
+    // contador não é de ninguém. Tratar "nenhum" como "lado 1" era o que
+    // fazia a tela abrir com o palete A cheio, célula desligada.
     const rota = this.roteamento(p);
-    this.moveDoPalete("A", p.celula.palete1,
-      p.robo.lado1 && !p.robo.lado2, rota.qtd, dt);
-    this.moveDoPalete("B", p.celula.palete2,
-      p.robo.lado2 && !p.robo.lado1, rota.qtd, dt);
+    const at = MqttSource.ativos(p);
+    this.moveDoPalete("A", p.celula.palete1, at.a, rota.qtd, dt);
+    this.moveDoPalete("B", p.celula.palete2, at.b, rota.qtd, dt);
 
     // EMERGÊNCIA: o robô para ONDE ESTAVA. Nada de terminar o movimento em
     // curso, nada de recolher — é o que a célula real faz quando a categoria
@@ -337,11 +341,10 @@ export class MqttSource extends EventEmitter {
   //  cronometra essa saída, e o cliente só interpola.
   //
   //  Tem uma segunda consequência, menos óbvia. UM contador serve aos dois
-  //  paletes, e enquanto o robô trabalha no lado 2 o lado 1 é reportado como
-  //  cheio (32). Se o operador tira o palete 1 e põe um vazio no lugar, o
-  //  contador não muda nada — a tela redesenharia 32 caixas sobre um palete
-  //  que acabou de chegar vazio. Por isso o lado retirado fica marcado, e
-  //  volta a contar só quando o robô de fato voltar a paletizar nele.
+  //  paletes, e ele não fala do lado inativo. Se o operador tira o palete
+  //  fechado e põe um vazio no lugar, o contador não muda nada — a tela
+  //  redesenharia as caixas antigas sobre um palete que acabou de chegar
+  //  vazio. Por isso `caixas` daquele lado zera quando a saída se completa.
   // --------------------------------------------------------------------------
   // 5 s para atravessar ~5,2 m: cerca de 1 m/s de média, que é passo de
   // empilhadeira carregada. Os 2,2 s de antes davam quase 2,4 m/s — parecia
@@ -358,19 +361,26 @@ export class MqttSource extends EventEmitter {
     if (e.pres === null) {
       e.pres = presente;
       e.saida = presente ? 0 : 1;
-      // Palete presente num lado que o robô NÃO está atendendo: é o que ele
-      // acabou de fechar. A célula alterna 1 e 2, então essa é a leitura de
-      // longe mais provável — e é a única que faz a tela abrir certa no meio
-      // de um turno.
-      e.cheio = presente && !ativo;
+      // Começa VAZIO, sem adivinhar nada.
+      //
+      // A primeira versão assumia: palete presente num lado que o robô não
+      // atende = palete que ele acabou de fechar, logo 32 caixas. Parecia
+      // razoável — a célula alterna 1 e 2 — mas com o robô parado NENHUM lado
+      // é o ativo, e a tela abria com o lado 1 cheio de caixas que não
+      // existiam. Mostrar menos do que há é falta de informação; mostrar
+      // caixas inventadas é mentira, e num supervisório mentira é pior.
+      //
+      // A pilha só aparece pelo que o gêmeo VIU acontecer. Quem abre a tela no
+      // meio de um turno vê o palete do outro lado vazio até a próxima troca.
+      e.caixas = 0;
+      e.qtdAnt = qtd;
     }
 
     if (e.pres && !presente) {            // borda de queda: a empilhadeira entrou
       e.saida = 0;
-      e.usado = false;
-      // `cheio` NÃO cai aqui: a carga está saindo EM CIMA do palete e
+      // `caixas` NÃO zera aqui: a carga está saindo EM CIMA do palete e
       // precisa continuar desenhada durante o trajeto. Zerar na borda fazia
-      // o palete atravessar a cena vazio e as 32 caixas evaporarem no lugar.
+      // o palete atravessar a cena vazio e as caixas evaporarem no lugar.
     }
     if (!e.pres && presente) e.saida = 0; // palete novo no lugar
     e.pres = presente;
@@ -379,20 +389,32 @@ export class MqttSource extends EventEmitter {
       e.saida = Math.min(1, e.saida + dt / MqttSource.SAIDA_S);
       // Saiu de cena: agora sim a carga deixou de existir aqui. Um palete
       // novo entra vazio, mesmo com o contador do CLP marcando 32.
-      if (e.saida >= 1) e.cheio = false;
+      if (e.saida >= 1) e.caixas = 0;
     }
     if (presente) e.saida = 0;
 
+    // =====================================================================
+    //  QUANTAS CAIXAS ESTÃO NESTE PALETE
+    //
+    //  Enquanto este é o lado ativo, o contador do CLP é dele e a resposta é
+    //  direta. Quando deixa de ser, o valor CONGELA — e é isso que mantém o
+    //  palete fechado na tela, esperando a empilhadeira.
+    //
+    //  A versão anterior guardava um booleano "cheio", ligado sempre que o
+    //  lado deixava de ser ativo depois de ter recebido caixas. Errado: robô
+    //  indo para home, entrando em falha ou saindo do automático também deixa
+    //  de atender o lado — e a tela pintava 32 caixas onde havia 4. Guardar o
+    //  NÚMERO acerta nos dois casos, e de graça mostra o palete interrompido
+    //  no meio com a quantidade que ele realmente tem.
+    // =====================================================================
     if (ativo) {
-      // O robô está paletizando aqui: o contador do CLP é deste lado.
-      e.cheio = false;
-      if (qtd > 0) e.usado = true;
-    } else if (e.usado) {
-      // Acabou de deixar de ser o lado ativo depois de ter recebido caixas:
-      // o que ficou ali é um palete CHEIO, e ele fica visível até alguém
-      // levar. Sem isto, fechar o palete fazia a pilha evaporar na troca.
-      e.cheio = true;
-      e.usado = false;
+      // A troca de lado zera o contador. Se ela chegar no mesmo quadro em que
+      // este lado ainda está marcado como ativo, o zero apagaria o palete que
+      // acabou de ser fechado — então esse quadro é ignorado. Recuo de falha
+      // (18 -> 16) não é zero, e continua sendo respeitado.
+      const zerou = qtd === 0 && e.qtdAnt > 0;
+      if (!zerou) e.caixas = qtd;
+      e.qtdAnt = qtd;
     }
   }
 

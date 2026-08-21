@@ -154,13 +154,13 @@ type Passo = (i: number) => { x: number; z: number; rot: number };
 //  corrigido pelo operador. Mudar o padrão = editar estas tabelas, nada mais.
 // ============================================================================
 
-// PALETE A · camada de BAIXO — o operador trocou 2 e 3 de ordem: o grupo do
-// lado do robô (z = -300) sai antes do que fica no fundo (z = +300). O
-// desenho final é o mesmo catavento; muda só quem é montado primeiro.
+// PALETE A · camada de BAIXO. A ordem entre 2 e 3 foi trocada e DESFEITA a
+// pedido do operador: o grupo do fundo (z = +300) volta a sair antes do que
+// fica do lado do robô (z = -300). Fica o registro para não trocar de novo.
 const TAB_A0: Passo[] = [
   (i) => ({ x: -300,           z: -475 + i * 150, rot: 0  }),   // 1: coluna ↓
-  (i) => ({ x: 25 + i * 150,   z: -300,           rot: 90 }),   // 2: centro → borda
-  (i) => ({ x: -475 + i * 150, z: 300,            rot: 90 }),   // 3: borda → centro
+  (i) => ({ x: -475 + i * 150, z: 300,            rot: 90 }),   // 2: borda → centro
+  (i) => ({ x: 25 + i * 150,   z: -300,           rot: 90 }),   // 3: centro → borda
   (i) => ({ x: 300,            z: 25 + i * 150,   rot: 0  }),   // 4: coluna ↓
 ];
 

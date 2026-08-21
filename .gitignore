@@ -1,0 +1,13 @@
+# dependências e build
+node_modules/
+client/dist/
+
+# segredos — NUNCA no repositório
+.env
+gateway/.env
+
+# export do projeto do CLP (programa da empresa, não faz parte do app web)
+client/PLC_1/
+
+# temporários
+*.log

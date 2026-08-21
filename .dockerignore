@@ -1,0 +1,8 @@
+node_modules
+client/dist
+client/PLC_1
+gateway/.env
+.env
+*.zip
+docs
+plc

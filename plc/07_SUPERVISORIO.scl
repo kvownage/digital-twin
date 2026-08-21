@@ -1,0 +1,127 @@
+// ============================================================================
+//  FC "07 - SUPERVISORIO"
+//
+//  Publica o estado da célula nas HOLDINGS livres do Modbus que JÁ EXISTE
+//  no projeto (DB 37 "MODBUS HOLDINGS", Array[0..99] of Word, servido pelo
+//  MB_SERVER do FC "06 - MODBUS CONN", porta 502).
+//
+//  NÃO TOCA em HOLDINGS[0..3]: são da integração com a balança
+//    [0] PEÇA EM POSIÇÃO   [1] PESO (0=aguardando, 1=OK, 2=NOK)
+//    [2] LIFE BIT BALANÇA  [3] LIFE BIT CLP
+//  HOLDINGS[4..9] ficam de folga proposital, para a balança crescer sem
+//  esbarrar no supervisório.
+//
+//  Este bloco é SOMENTE LEITURA do processo: ele lê tags e escreve no DB de
+//  Modbus. Não comanda nada. O supervisório observa, não move.
+//
+//  COMO USAR NO TIA PORTAL
+//   1. Program blocks > Add new block > Function > nome "07 - SUPERVISORIO",
+//      linguagem SCL.  (Ou: Add new external file > este .scl > gerar bloco.)
+//   2. Colar este corpo.
+//   3. Chamar no fim do Main [OB1], depois de "06 - MODBUS CONN".
+//   4. Compilar e carregar.
+// ============================================================================
+
+FUNCTION "07 - SUPERVISORIO" : Void
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+
+VAR_TEMP
+   wSt1 : Word;   // palavra de estado 1 — robô
+   wSt2 : Word;   // palavra de estado 2 — célula e segurança
+END_VAR
+
+BEGIN
+
+   // =========================================================================
+   //  HR 10 — estado do ROBÔ, bit a bit
+   // =========================================================================
+   #wSt1 := 0;
+   #wSt1.%X0  := "ROBO - EM RUN";
+   #wSt1.%X1  := "ROBO - SERVO ON";
+   #wSt1.%X2  := "ROBO - EM MASTER JOB";
+   #wSt1.%X3  := "ROBO - EM FALHA";
+   #wSt1.%X4  := "ROBO - EM REMOTO";
+   #wSt1.%X5  := "ROBO - EM HOME";
+   #wSt1.%X6  := "ROBO - FORA DE HOME";
+   #wSt1.%X7  := "ROBO - PEGA OK";
+   #wSt1.%X8  := "ROBO - LADO 1 ATIVO";
+   #wSt1.%X9  := "ROBO - LADO 2 ATIVO";
+   #wSt1.%X10 := "ROBO - CAIXA EM INDEXADOR";
+   #wSt1.%X11 := "ROBO - LIGA VACUO GARRA";
+   #wSt1.%X12 := "VC1 - VACUO OK GARRA";
+   #wSt1.%X13 := "ROBO - DESCARGA CHEIA";
+   #wSt1.%X14 := "ROBO - FIM ENCAIXOTAMENTO LAD 1";
+   #wSt1.%X15 := "ROBO - FIM ENCAIXOTAMENTO LAD 2";
+   "MODBUS HOLDINGS".HOLDINGS[10] := #wSt1;
+
+   // =========================================================================
+   //  HR 11 — estado da CÉLULA e da SEGURANÇA
+   // =========================================================================
+   #wSt2 := 0;
+   #wSt2.%X0  := "SP3 - ESTEIRA DE ENTRADA";
+   #wSt2.%X1  := "SFC2 - INDEXADOR CAIXA AVANCADO";
+   #wSt2.%X2  := "SP1 - SENSOR PECA ROBO";
+   #wSt2.%X3  := "SP1 - SENSOR PRESENÇA DE PALETE LADO 1";
+   #wSt2.%X4  := "SP2 - SENSOR PRESENÇA DE PALETE LADO 2";
+   #wSt2.%X5  := "SP4 - PALETE LADO 01";
+   #wSt2.%X6  := "SP5 - PALETE LADO 02";
+   #wSt2.%X7  := "ESTEIRA ENTRADA";
+   #wSt2.%X8  := "ESTEIRA SAIDA";
+   #wSt2.%X9  := "DESABILITA SELADORA";
+   #wSt2.%X10 := "BHA1 - BOTAO HABILITA AUTOMATICO";
+   #wSt2.%X11 := "CHAVE SEGURANCA PORTA 01";
+   #wSt2.%X12 := "CHAVE SEGURANCA PORTA 02";
+   #wSt2.%X13 := "BARREIRA SEGURANCA 01";
+   #wSt2.%X14 := "BARREIRA SEGURANCA 02";
+   #wSt2.%X15 := "TRVM1 - TORRE SINALIZACAO VERMELHO";
+   "MODBUS HOLDINGS".HOLDINGS[11] := #wSt2;
+
+   // =========================================================================
+   //  HR 12..14 — passos das sequências (DB "ESTADOS")
+   //
+   //  ATENÇÃO à grafia dos membros: o lado 01 é "PALETIZACAO" (sem cedilha) e
+   //  o lado 02 é "PALETIZAÇAO" (com cedilha). É assim no projeto; se o TIA
+   //  reclamar, confira o nome no DB 14 antes de mudar aqui.
+   // =========================================================================
+   "MODBUS HOLDINGS".HOLDINGS[12] := INT_TO_WORD("ESTADOS"."INICIALIZACAO ROBO");
+   "MODBUS HOLDINGS".HOLDINGS[13] := INT_TO_WORD("ESTADOS"."PALETIZACAO LAD. 01");
+   "MODBUS HOLDINGS".HOLDINGS[14] := INT_TO_WORD("ESTADOS"."PALETIZAÇAO LAD. 02");
+
+   // =========================================================================
+   //  HR 15..22 — números do processo, vindos do robô
+   // =========================================================================
+   // Contagem do lado ATIVO. Apesar do nome, esta memória serve aos DOIS
+   // paletes: a célula termina um e começa o outro, e quem diz de quem é a
+   // contagem são os bits LADO 1/2 ATIVO da HR10.
+   "MODBUS HOLDINGS".HOLDINGS[15] := INT_TO_WORD("ROBO - QTDE LADO 1");
+   "MODBUS HOLDINGS".HOLDINGS[16] := INT_TO_WORD("ROBO - RETORNO PLACE");
+   "MODBUS HOLDINGS".HOLDINGS[17] := INT_TO_WORD("ROBO - RETORNO CAMADA");
+   "MODBUS HOLDINGS".HOLDINGS[18] := INT_TO_WORD("ROBO - RETORNO ALTURA CAIXA");
+   "MODBUS HOLDINGS".HOLDINGS[19] := INT_TO_WORD("ROBO - RETORNO ALTURA PALLET");
+   "MODBUS HOLDINGS".HOLDINGS[20] := INT_TO_WORD("ROBO - RETORNO SHIFT Y");
+   "MODBUS HOLDINGS".HOLDINGS[21] := INT_TO_WORD("ROBO - RETORNO SHIFT Z");
+   "MODBUS HOLDINGS".HOLDINGS[22] := INT_TO_WORD("ROBO - CAMADA");
+
+   // =========================================================================
+   //  HR 23..25 — alarmes e pressão
+   // =========================================================================
+   "MODBUS HOLDINGS".HOLDINGS[23] := INT_TO_WORD("ALARMES"."ROBO EM FALHA");
+   "MODBUS HOLDINGS".HOLDINGS[24] := INT_TO_WORD("ALARMES"."BALANCA");
+
+   // Pressão em centésimos de bar: 6,25 bar -> 625. Inteiro atravessa Modbus
+   // sem depender de ordem de palavra de ponto flutuante.
+   "MODBUS HOLDINGS".HOLDINGS[25] := INT_TO_WORD(REAL_TO_INT("PRESSAO AR" * 100.0));
+
+   // =========================================================================
+   //  HR 26 — HEARTBEAT do supervisório
+   //
+   //  Incrementa todo ciclo. É o que prova que o PROGRAMA está rodando —
+   //  Modbus responde igual com o CLP em STOP, e o gateway usa este número
+   //  para não deixar dado velho passar por dado bom. O DB guarda o valor
+   //  entre ciclos, então não precisa de tag auxiliar nenhuma.
+   // =========================================================================
+   "MODBUS HOLDINGS".HOLDINGS[26] :=
+      INT_TO_WORD(WORD_TO_INT("MODBUS HOLDINGS".HOLDINGS[26]) + 1);
+
+END_FUNCTION

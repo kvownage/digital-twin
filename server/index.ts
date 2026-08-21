@@ -153,28 +153,39 @@ try {
   console.error(`[fonte-real] nao inicializou (${(e as Error).message}) — só SIMULADOR`);
   real = new MqttSource("mqtt://desligado.invalido:1883");
 }
-let fonte: "sim" | "real" = "sim";
+// A FONTE É POR NAVEGADOR, não do servidor.
+//
+// Quem está de olho na célula em produção não pode ter a tela trocada porque
+// outra pessoa, noutra sala, abriu o simulador para demonstrar. Cada conexão
+// escolhe a sua e recebe só o que pediu.
+//
+// Os comandos de SIMULAÇÃO (pausar, ritmo, turbo, prévia, reiniciar) seguem
+// globais de propósito: existe UM simulador no servidor, e todos que o
+// estiverem assistindo veem o mesmo robô — como numa máquina de verdade.
+const fonteDe = new WeakMap<WebSocket, "sim" | "real">();
+const fonteDo = (c: WebSocket) => fonteDe.get(c) ?? "sim";
 
-function broadcast(state: RobotState) {
-  const msg: StateMsg = { type: "state", ...state, fonte, realOk: real.ok };
-  const data = JSON.stringify(msg);
+function broadcast(state: RobotState, de: "sim" | "real") {
+  let data: string | null = null;
   for (const c of wss.clients) {
-    if (c.readyState === WebSocket.OPEN) c.send(data);
+    if (c.readyState !== WebSocket.OPEN || fonteDo(c) !== de) continue;
+    // Serializa uma vez só, e apenas se houver alguém para receber.
+    if (data === null) {
+      const msg: StateMsg = { type: "state", ...state, fonte: de, realOk: real.ok };
+      data = JSON.stringify(msg);
+    }
+    c.send(data);
   }
 }
 
-// 50 Hz de simulação -> 25 Hz de rede; a fonte real já emite a 5 Hz.
+// 50 Hz de simulação -> 25 Hz de rede; a fonte real já emite a 25 Hz.
 let skip = false;
 sim.on("state", (s: RobotState) => {
-  if (fonte !== "sim") return;
   skip = !skip;
   if (skip) return;
-  broadcast(s);
+  broadcast(s, "sim");
 });
-real.on("state", (s: RobotState) => {
-  if (fonte !== "real") return;
-  broadcast(s);
-});
+real.on("state", (s: RobotState) => broadcast(s, "real"));
 
 wss.on("connection", (ws) => {
   const hello: HelloMsg = {
@@ -194,7 +205,8 @@ wss.on("connection", (ws) => {
       const msg = JSON.parse(String(raw)) as ClientCmd;
       if (!msg || typeof msg.cmd !== "string") return;
       if (msg.cmd === "fonte") {
-        if (msg.value === "sim" || msg.value === "real") fonte = msg.value;
+        // Só esta conexão troca de fonte. As outras seguem onde estavam.
+        if (msg.value === "sim" || msg.value === "real") fonteDe.set(ws, msg.value);
         return;
       }
       // Comandos de simulação valem SÓ para o simulador — a célula real não

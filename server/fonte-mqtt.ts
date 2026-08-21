@@ -47,6 +47,9 @@ export class MqttSource extends EventEmitter {
   private ladoVoo: "A" | "B" | null = null;   // para qual palete ela vai
   private wpAlvo = -1;              // para qual trecho o goTo já foi emitido
 
+  /** Teto de tempo carregando, antes de soltar por conta própria. */
+  private static readonly MAX_CARREGANDO_S = 10;
+
   /** Larga a caixa e recua. Um só lugar, para não esquecer campo nenhum. */
   private solta() {
     this.carregando = false;
@@ -252,11 +255,20 @@ export class MqttSource extends EventEmitter {
       this.ladoVoo = rota.noLado2 ? "B" : "A";
       this.wp = 2;                    // SOBE, com a caixa
     } else if (pegouAgora) {
-      // Já carregando e a caixa saiu dos roletes outra vez: a célula andou
-      // mais rápido do que a animação. Não se refaz o trecho — refazer `wp`
-      // era o que fazia o braço recuar no meio do caminho. Renova só o cão
-      // de guarda e deixa o movimento em curso terminar.
-      this.tCarregando = 0;
+      // OUTRA caixa saiu dos roletes e o gêmeo ainda carrega a anterior.
+      //
+      // A célula não pegaria uma caixa nova se a anterior não tivesse sido
+      // assentada — então este evento é, por si só, prova de que o depósito
+      // aconteceu, mesmo que o contador não tenha dito nada.
+      //
+      // A versão anterior fazia o contrário: reiniciava o cão de guarda. Com
+      // a célula produzindo, cada caixa nova renovava a espera e o braço
+      // ficava plantado no slot INDEFINIDAMENTE, aguardando um contador que
+      // não vinha para aquela posição. Era esse o travamento.
+      //
+      // Não se refaz `wp` aqui: refazer era o que fazia o braço recuar no
+      // meio do caminho. Ele termina a viagem e solta ao chegar.
+      this.depositoContado = true;
     }
 
     // =======================================================================
@@ -327,10 +339,16 @@ export class MqttSource extends EventEmitter {
           this.solta();
         }
       }
-      // Rede de segurança: 25 s sem fechar o ciclo significa que algo se
-      // perdeu (sinal, reconexão, caso não previsto). Solta o braço em vez de
-      // deixá-lo plantado no slot para sempre.
-      if (this.carregando && this.tCarregando > 25) this.solta();
+      // Rede de segurança. O trajeto inteiro leva ~2,2 s; dez segundos
+      // carregando significa que o evento de depósito se perdeu — sinal,
+      // reconexão, ou uma posição em que o robô não atualiza o contador.
+      // Solta em vez de deixar o braço plantado no slot.
+      //
+      // Eram 25 s, e o cão de guarda ainda era reiniciado a cada nova pega:
+      // com a célula produzindo, ele nunca disparava.
+      if (this.carregando && this.tCarregando > MqttSource.MAX_CARREGANDO_S) {
+        this.solta();
+      }
     } else if (this.wp === 6) {
       if (alinhado && this.ptp.chegou) this.wp = 0;   // terminou de recuar
     } else {

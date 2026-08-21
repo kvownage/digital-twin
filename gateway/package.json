@@ -1,0 +1,21 @@
+{
+  "name": "gateway-celula-r01",
+  "version": "1.0.0",
+  "description": "Le o CLP por Modbus TCP e publica no broker MQTT. Roda na maquina que enxerga a rede do CLP.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "tsx index.ts",
+    "testa-modbus": "tsx testa-modbus.ts",
+    "clp-falso": "tsx clp-falso.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "modbus-serial": "^8.0.17",
+    "mqtt": "^5.10.1",
+    "tsx": "^4.19.1"
+  },
+  "devDependencies": {
+    "aedes": "^1.1.1"
+  }
+}

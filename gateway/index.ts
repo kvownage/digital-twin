@@ -25,12 +25,17 @@ const MQTT_URL = process.env.MQTT_URL ?? "mqtt://localhost:1883";
 const TOPICO = process.env.MQTT_TOPICO ?? "multilaser/paletizadora/r01/estado";
 
 const POLL_MS = 100;
-const QTD_REG = 28;                  // HR0..HR27
+const QTD_REG = 35;                  // HR0..HR34 (o mapa completo da FC 07)
 const HEARTBEAT_TIMEOUT_MS = 2000;
 
 // Int16 chega como UInt16 do modbus-serial — devolve o sinal.
 const int16 = (v: number) => (v > 0x7fff ? v - 0x10000 : v);
 const bit = (w: number, n: number) => (w & (1 << n)) !== 0;
+/** Primeiro bit ligado na faixa, como número 1..qtd. Zero se nenhum. */
+const primeiroBit = (w: number, base: number, qtd: number) => {
+  for (let i = 0; i < qtd; i++) if (bit(w, base + i)) return i + 1;
+  return 0;
+};
 
 const modbus = new ModbusRTU();
 const broker = mqtt.connect(MQTT_URL, {
@@ -65,8 +70,11 @@ async function le() {
   try {
     const { data } = await modbus.readHoldingRegisters(0, QTD_REG);
 
-    const st1 = data[10];
-    const st2 = data[11];
+    const st1 = data[10];   // robô
+    const st2 = data[11];   // célula e segurança
+    const st4 = data[28];   // causas da emergência
+    const st5 = data[29];   // mosaico e variante
+    const st6 = data[30];   // torre, vácuos, condições
     const hb = data[26];
     const agora = Date.now();
     if (hb !== ultimoHb) {
@@ -130,6 +138,45 @@ async function le() {
         peso: (pesoBruto === 1 ? 1 : pesoBruto === 2 ? 2 : 0),
         lifeBit: bit(data[3], 0),
       },
+
+      causaEmergencia: {
+        botoes: bit(st4, 0),
+        chaveSeg1: bit(st4, 1), chaveSeg2: bit(st4, 2),
+        barreira1: bit(st4, 3), barreira2: bit(st4, 4),
+        botaoLado1: bit(st4, 5), botaoLado2: bit(st4, 6),
+        chaveLado1: bit(st4, 7), chaveLado2: bit(st4, 8),
+        resetSeguranca: bit(st4, 9),
+        botaoPainel: bit(st4, 10),
+        botaoPorta1: bit(st4, 11), botaoPorta2: bit(st4, 12),
+        botaoRobo: bit(st4, 13),
+      },
+
+      mosaico: {
+        // Bits 0..6 = mosaico 1..7. Devolve o número, não o bit — quem lê
+        // quer saber "qual padrão", não "qual bit".
+        paletizar: primeiroBit(st5, 0, 7),
+        encaixotar: (() => { const n = primeiroBit(st5 >> 9, 0, 5); return n ? n + 2 : 0; })(),
+        caixaPequena: bit(st5, 7),
+        armarCx4: bit(st5, 8),
+        encaixotando: bit(st5, 14),
+      },
+
+      torre: {
+        vermelho: bit(st6, 0), amarelo: bit(st6, 1),
+        verde: bit(st6, 2), buzzer: bit(st6, 3),
+        vc1: bit(st6, 4), vc2: bit(st6, 5), vc3: bit(st6, 6),
+        condicaoCiclo: bit(st6, 7),
+        condicaoLado1: bit(st6, 8), condicaoLado2: bit(st6, 9),
+        inatividade: bit(st6, 10),
+        trocarGarra: bit(st6, 11), posicaoTrocaGarra: bit(st6, 12),
+        rejeitarMaster: bit(st6, 13), devolverMaster: bit(st6, 14),
+        ligaDesliga: bit(st6, 15),
+      },
+
+      statusRobo: int16(data[31]),
+      statusLado1: int16(data[32]),
+      statusLado2: int16(data[33]),
+      autoManual: int16(data[34]),
     };
 
     // publica só quando muda (o ts fica de fora da comparação)

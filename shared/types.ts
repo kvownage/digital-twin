@@ -158,6 +158,48 @@ export interface RealPayload {
   /** HR27 — paletes completos produzidos (contador do DB COMANDOS). */
   paletesProduzidos: number;
 
+  /** HR28 — CAUSAS da emergência: a HR11 diz QUE há, esta diz POR QUÊ. */
+  causaEmergencia: {
+    botoes: boolean; chaveSeg1: boolean; chaveSeg2: boolean;
+    barreira1: boolean; barreira2: boolean;
+    botaoLado1: boolean; botaoLado2: boolean;
+    chaveLado1: boolean; chaveLado2: boolean;
+    resetSeguranca: boolean;
+    botaoPainel: boolean; botaoPorta1: boolean; botaoPorta2: boolean;
+    botaoRobo: boolean;
+  };
+
+  /** HR29 — qual dos SETE mosaicos está ativo, e a variante de produto.
+   *  Sem isto, trocar de produto faria a tela desenhar a pilha no padrão
+   *  errado: contagem certa, posições erradas. */
+  mosaico: {
+    paletizar: number;      // 1..7, ou 0 se nenhum bit ativo
+    encaixotar: number;     // 3..7, ou 0
+    caixaPequena: boolean;
+    armarCx4: boolean;
+    encaixotando: boolean;
+  };
+
+  /** HR30 — torre de sinalização, os TRÊS vácuos e condições. */
+  torre: {
+    vermelho: boolean; amarelo: boolean; verde: boolean; buzzer: boolean;
+    /** VC1/VC2/VC3: o padrão de quais caíram diz se foi caixa torta,
+     *  ventosa entupida ou falta de ar. */
+    vc1: boolean; vc2: boolean; vc3: boolean;
+    condicaoCiclo: boolean;
+    condicaoLado1: boolean; condicaoLado2: boolean;
+    inatividade: boolean;
+    trocarGarra: boolean; posicaoTrocaGarra: boolean;
+    rejeitarMaster: boolean; devolverMaster: boolean;
+    ligaDesliga: boolean;
+  };
+
+  /** HR31..34 — status numéricos do DB COMANDOS, em bruto. */
+  statusRobo: number;
+  statusLado1: number;
+  statusLado2: number;
+  autoManual: number;
+
   /** HR23..25 */
   almRobo: number;
   almBalanca: number;

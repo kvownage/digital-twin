@@ -60,6 +60,14 @@ export const PALLET = {
   layers: 2,                      // catavento de 16 por camada, 2 camadas = 32
 } as const;
 
+// Saída do palete na empilhadeira, e a troca que a contém. A troca tem de
+// durar MAIS do que a saída: `placed` é limpo no fim dela, e se fosse antes a
+// pilha desapareceria no meio do caminho, deixando o palete viajar vazio.
+// Mesmo valor de saída da fonte real (MqttSource.SAIDA_S), de propósito: o
+// mesmo movimento nas duas fontes.
+const SAIDA_S = 5.0;
+const TROCA_S = 6.0;
+
 // A calha de DESCARTE: peça em posição sem o OK da balança = reprovada, e o
 // robô a descarta aqui — regra confirmada pelo autor da célula.
 export const DESCARTE = { s: 40, r: 1120, top: 650 } as const;
@@ -406,7 +414,7 @@ export class Gp12Simulator extends EventEmitter {
 
       if (this.trocando) {
         this.dwell += dt;
-        if (this.dwell >= 3.5) {
+        if (this.dwell >= TROCA_S) {
           // paletes novos: a pilha some, a contagem zera
           this.placed = [];
           this.boxIdx = 0;
@@ -538,11 +546,13 @@ export class Gp12Simulator extends EventEmitter {
       paletesProduzidos: 0,
       paleteA: !this.trocando,
       paleteB: !this.trocando,
-      // Na troca os dois paletes saem de cena na empilhadeira, cada um pelo
-      // seu lado livre — as caixas vão em cima, porque `placed` só é limpo
-      // ao fim dos 3,5 s. O progresso sai direto do relógio da troca.
-      saidaA: this.trocando ? Math.min(1, this.dwell / 2.2) : 0,
-      saidaB: this.trocando ? Math.min(1, this.dwell / 2.2) : 0,
+      // Na troca os dois paletes saem de cena na empilhadeira, para trás —
+      // as caixas vão em cima, porque `placed` só é limpo ao fim da troca. O
+      // progresso sai direto do relógio dela, e por isso a troca dura mais do
+      // que a saída: se durasse menos, a pilha seria apagada no meio do
+      // caminho e o palete terminaria a viagem vazio.
+      saidaA: this.trocando ? Math.min(1, this.dwell / SAIDA_S) : 0,
+      saidaB: this.trocando ? Math.min(1, this.dwell / SAIDA_S) : 0,
       fonte: "sim",
       realOk: false,        // o index.ts sobrescreve com o frescor da fonte real
       tcp: fkTcp(this.j),

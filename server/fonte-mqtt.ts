@@ -343,7 +343,10 @@ export class MqttSource extends EventEmitter {
   //  que acabou de chegar vazio. Por isso o lado retirado fica marcado, e
   //  volta a contar só quando o robô de fato voltar a paletizar nele.
   // --------------------------------------------------------------------------
-  private static readonly SAIDA_S = 2.2;   // o tempo da empilhadeira sair
+  // 5 s para atravessar ~5,2 m: cerca de 1 m/s de média, que é passo de
+  // empilhadeira carregada. Os 2,2 s de antes davam quase 2,4 m/s — parecia
+  // fuga, não manobra.
+  private static readonly SAIDA_S = 5.0;
 
   private moveDoPalete(
     lado: "A" | "B", presente: boolean, ativo: boolean, qtd: number, dt: number,

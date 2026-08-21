@@ -19,19 +19,26 @@ const MADEIRA = "#7A5C36";
  *  visível — quando termina, já não há nada para ver. */
 const SAIDA_MM = 5200;
 
+/** Por onde o palete sai: para TRÁS, em -X.
+ *
+ *  O batente em L fecha dois lados — o braço lateral fica em +X (o lado da
+ *  balança) e o transversal fica voltado para o robô. Sobra o fundo, em -X,
+ *  oposto à entrada da linha: é por ali que a empilhadeira entra, e vale para
+ *  os dois paletes. A primeira versão tirava pelo Z, cada palete para o seu
+ *  lado, e passava raspando no batente. */
+const SAIDA_DIR: [number, number, number] = [-1, 0, 0];
+
 /** O palete de um lado E a pilha dele, num grupo só.
  *
  *  Enquanto o sensor (SP4/SP5) enxerga, fica parado no lugar. Quando o sensor
  *  cai, o servidor manda o progresso da saída (0..1) e este grupo desliza para
- *  o lado LIVRE — o que não tem batente, que é o lado de fora, longe do robô.
- *  É por onde a empilhadeira entra de verdade.
+ *  o fundo da cena, pelo vão livre do batente.
  *
  *  Palete e caixas juntos de propósito: se cada caixa animasse por conta, um
  *  quadro de diferença já apareceria como pilha se desmanchando no ar. */
-function SaidaDoPalete({ live, lado, dirZ, children }: {
+function SaidaDoPalete({ live, lado, children }: {
   live: React.MutableRefObject<RobotState | null>;
   lado: "A" | "B";
-  dirZ: 1 | -1;
   children: React.ReactNode;
 }) {
   const ref = useRef<THREE.Group>(null!);
@@ -50,17 +57,23 @@ function SaidaDoPalete({ live, lado, dirZ, children }: {
     if (presente && foraDeCena.current) {
       // Palete NOVO no lugar: aparece parado, não vem voando de volta do
       // fundo da cena. O que saiu, saiu.
-      ref.current.position.z = 0;
+      ref.current.position.set(0, 0, 0);
       foraDeCena.current = false;
       return;
     }
 
-    // u² : arranca devagar e ganha velocidade, como empilhadeira saindo.
-    // Se o sensor voltar antes de a saída terminar (palete só reposicionado),
+    // Distância já percorrida. O `u` vem do servidor e cresce linearmente; a
+    // curva suave está aqui: arranca devagar e desacelera no fim, que é como
+    // empilhadeira anda com carga alta em cima. Sem isto o palete partia num
+    // rojão. Se o sensor voltar antes de terminar (palete só reposicionado),
     // o alvo é zero e ele volta deslizando — que é o que se vê no chão.
-    const alvo = presente ? 0 : dirZ * SAIDA_MM * u * u;
+    const suave = u * u * (3 - 2 * u);          // smoothstep
+    const d = presente ? 0 : SAIDA_MM * suave;
     const k = Math.min(1, dt * 12);
-    ref.current.position.z += (alvo - ref.current.position.z) * k;
+    const p = ref.current.position;
+    p.x += (SAIDA_DIR[0] * d - p.x) * k;
+    p.y += (SAIDA_DIR[1] * d - p.y) * k;
+    p.z += (SAIDA_DIR[2] * d - p.z) * k;
   });
   return <group ref={ref}>{children}</group>;
 }
@@ -363,10 +376,10 @@ export function Cell({ live, layout, placed }: {
           empilhadeira leva o palete a carga vai com ele — o batente amarelo
           fica, marcando o lugar vazio.
 
-          A direção da saída é o lado LIVRE de cada posição: o batente fecha o
-          lado do robô e o lado da balança, então sobra o fundo da cena. */}
+          A saída é para TRÁS, em -X: o batente fecha o lado do robô e o lado
+          da balança, e o fundo é o único vão livre (ver SAIDA_DIR). */}
       {([[-1, "A"], [+1, "B"]] as const).map(([lado, nome]) => (
-        <SaidaDoPalete key={nome} live={live} lado={nome} dirZ={lado}>
+        <SaidaDoPalete key={nome} live={live} lado={nome}>
           <Palete z={lado * layout.pallet.r} size={layout.pallet.size} top={layout.pallet.top} />
           {placed
             .filter((p) => (p.z < 0 ? "A" : "B") === nome)

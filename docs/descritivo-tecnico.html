@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Supervisório 3D da Célula R-01 — Descritivo Técnico</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 16mm 16mm; }
+
+  :root {
+    --tinta:      #14181D;
+    --tinta-fraca:#4A535E;
+    --linha:      #C9D0D8;
+    --linha-forte:#8E99A6;
+    --azul:       #1B2F73;
+    --azul-claro: #EDF1F8;
+    --cinza:      #F4F6F8;
+    --amarelo:    #B8860B;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    margin: 0;
+    font: 10.2pt/1.52 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--tinta);
+    background: #fff;
+  }
+
+  /* ---------------------------------------------------------- capa ---- */
+  .capa {
+    border-top: 4pt solid var(--azul);
+    padding-top: 10mm;
+    margin-bottom: 12mm;
+  }
+  .capa .chapeu {
+    font-size: 8.2pt; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--tinta-fraca); font-weight: 600; margin-bottom: 5mm;
+  }
+  .capa h1 {
+    font-size: 25pt; line-height: 1.12; margin: 0 0 4mm; font-weight: 650;
+    letter-spacing: -.015em;
+  }
+  .capa .sub {
+    font-size: 12pt; color: var(--tinta-fraca); margin: 0 0 8mm;
+    max-width: 130mm;
+  }
+  .ficha {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 0; border-top: .6pt solid var(--linha);
+    border-bottom: .6pt solid var(--linha);
+  }
+  .ficha div { padding: 3.5mm 4mm 3.5mm 0; }
+  .ficha dt {
+    font-size: 7.6pt; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--tinta-fraca); font-weight: 600; margin-bottom: 1.2mm;
+  }
+  .ficha dd { margin: 0; font-size: 10pt; font-weight: 600; }
+
+  /* -------------------------------------------------------- títulos ---- */
+  h2 {
+    font-size: 13.5pt; margin: 9mm 0 3mm; font-weight: 650;
+    letter-spacing: -.01em; padding-bottom: 1.5mm;
+    border-bottom: 1.4pt solid var(--azul);
+    break-after: avoid; page-break-after: avoid;
+  }
+  h2 .num {
+    display: inline-block; min-width: 8mm; color: var(--azul); font-weight: 700;
+  }
+  h3 {
+    font-size: 10.8pt; margin: 5.5mm 0 2mm; font-weight: 650;
+    break-after: avoid; page-break-after: avoid;
+  }
+  p { margin: 0 0 2.6mm; text-align: justify; hyphens: auto; }
+  strong { font-weight: 650; }
+  code {
+    font: 9pt/1.4 "Cascadia Mono", Consolas, "Courier New", monospace;
+    background: var(--cinza); padding: .3mm 1mm; border-radius: 1pt;
+  }
+
+  /* --------------------------------------------------------- tabelas ---- */
+  table {
+    width: 100%; border-collapse: collapse; margin: 3mm 0 4mm;
+    font-size: 9.2pt; break-inside: avoid; page-break-inside: avoid;
+  }
+  caption {
+    caption-side: top; text-align: left; font-size: 8pt; font-weight: 600;
+    letter-spacing: .09em; text-transform: uppercase; color: var(--tinta-fraca);
+    padding-bottom: 1.5mm;
+  }
+  th {
+    text-align: left; font-weight: 650; font-size: 8.4pt;
+    letter-spacing: .05em; text-transform: uppercase;
+    border-bottom: 1pt solid var(--linha-forte); padding: 1.8mm 2.5mm 1.8mm 0;
+    vertical-align: bottom;
+  }
+  td {
+    padding: 1.8mm 2.5mm 1.8mm 0; border-bottom: .5pt solid var(--linha);
+    vertical-align: top;
+  }
+  td.mono, th.mono { font-family: "Cascadia Mono", Consolas, monospace; font-size: 8.6pt; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.total td { border-top: 1pt solid var(--linha-forte); border-bottom: none; font-weight: 650; }
+
+  /* ------------------------------------------------------- diagrama ---- */
+  .fluxo {
+    display: flex; align-items: stretch; gap: 0; margin: 4mm 0 5mm;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .fluxo .no {
+    flex: 1; border: .7pt solid var(--linha-forte); border-radius: 2pt;
+    padding: 3mm 2.5mm; text-align: center; background: #fff;
+  }
+  .fluxo .no.destaque { background: var(--azul-claro); border-color: var(--azul); }
+  .fluxo .no .t {
+    font-size: 8.6pt; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; margin-bottom: 1.5mm;
+  }
+  .fluxo .no .d { font-size: 8pt; line-height: 1.35; color: var(--tinta-fraca); }
+  .fluxo .seta {
+    flex: 0 0 11mm; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: .8mm;
+  }
+  .fluxo .seta .g { font-size: 7pt; color: var(--tinta-fraca); white-space: nowrap; }
+  .fluxo .seta .p { font-size: 11pt; color: var(--azul); line-height: 1; }
+
+  /* ---------------------------------------------------------- caixas ---- */
+  .nota {
+    border-left: 2.5pt solid var(--amarelo); background: #FDF9EE;
+    padding: 3mm 4mm; margin: 3.5mm 0; font-size: 9.4pt;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .nota .r {
+    font-size: 7.8pt; letter-spacing: .1em; text-transform: uppercase;
+    font-weight: 700; color: #8A6408; margin-bottom: 1.2mm;
+  }
+  .nota p:last-child { margin-bottom: 0; }
+
+  ul { margin: 0 0 3mm; padding-left: 5mm; }
+  li { margin-bottom: 1.6mm; text-align: justify; }
+
+  .quebra { break-before: page; page-break-before: always; }
+
+  footer {
+    margin-top: 10mm; padding-top: 3mm; border-top: .6pt solid var(--linha);
+    font-size: 8.2pt; color: var(--tinta-fraca); display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<div class="capa">
+  <div class="chapeu">Descritivo técnico · Engenharia de automação</div>
+  <h1>Supervisório 3D e gêmeo digital<br>da célula de paletização R-01</h1>
+  <p class="sub">Motoman GP12 · visualização tridimensional em navegador, dirigida
+  pelos sinais reais da linha, com fonte alternável entre célula e simulador.</p>
+  <dl class="ficha">
+    <div><dt>Robô</dt><dd>Yaskawa Motoman GP12</dd></div>
+    <div><dt>Controlador</dt><dd>Siemens S7 · Modbus TCP</dd></div>
+    <div><dt>Código</dt><dd>3.555 linhas · 32 arquivos</dd></div>
+    <div><dt>Linguagem</dt><dd>TypeScript · SCL</dd></div>
+  </dl>
+</div>
+
+<h2><span class="num">1</span>O que o sistema é</h2>
+
+<p>Uma página web que desenha, em três dimensões, a célula de paletização R-01 em
+funcionamento: o robô, a esteira de entrada, a balança de roletes, a seladora, os
+dois paletes e a pilha crescendo caixa a caixa. Abre em qualquer navegador, sem
+instalação, com login restrito ao domínio da empresa.</p>
+
+<p>A decisão central do projeto está numa frase: <strong>o movimento do robô não é
+lido, é gerado.</strong> O controlador do robô não publica seus ângulos de junta ao
+CLP, e obter isso exigiria mexer no programa do robô. Em vez disso, o sistema conhece
+a cinemática real do GP12 e usa os <strong>sinais discretos da linha</strong> — peça
+em posição na balança, contador de caixas, bits de lado ativo, presença de palete —
+para decidir <em>quando</em> cada trecho do movimento acontece. Os eventos são reais;
+o que se interpola é apenas o caminho entre eles.</p>
+
+<p>Isso caracteriza um <strong>gêmeo digital orientado a eventos</strong>, e não uma
+animação decorativa nem um espelho de telemetria. A distinção tem consequência
+prática: a tela nunca mostra a célula produzindo quando ela está parada, porque não
+há nada que a faça andar sozinha.</p>
+
+<h2><span class="num">2</span>Arquitetura</h2>
+
+<p>Cinco camadas, cada uma com uma responsabilidade única e um protocolo de
+fronteira explícito. Nenhuma camada conhece a implementação da seguinte.</p>
+
+<div class="fluxo">
+  <div class="no">
+    <div class="t">CLP</div>
+    <div class="d">Siemens S7<br>FC em SCL<br>HR10–HR34</div>
+  </div>
+  <div class="seta"><span class="g">Modbus TCP</span><span class="p">→</span><span class="g">porta 503</span></div>
+  <div class="no">
+    <div class="t">Gateway</div>
+    <div class="d">Node.js<br>no PC da fábrica<br>polling 100 ms</div>
+  </div>
+  <div class="seta"><span class="g">MQTT/TLS</span><span class="p">→</span><span class="g">8883</span></div>
+  <div class="no">
+    <div class="t">Broker</div>
+    <div class="d">HiveMQ Cloud<br>tópico único<br>retained</div>
+  </div>
+  <div class="seta"><span class="g">MQTT</span><span class="p">→</span><span class="g">assina</span></div>
+  <div class="no destaque">
+    <div class="t">Servidor</div>
+    <div class="d">Node + Express<br>gêmeo digital<br>OAuth Google</div>
+  </div>
+  <div class="seta"><span class="g">WebSocket</span><span class="p">→</span><span class="g">25 Hz</span></div>
+  <div class="no">
+    <div class="t">Navegador</div>
+    <div class="d">React<br>three.js<br>WebGL 60 fps</div>
+  </div>
+</div>
+
+<p>O sentido do fluxo é único: da célula para a tela. O supervisório <strong>observa e
+não comanda</strong> — o bloco no CLP só lê tags e escreve no DB de Modbus, e não há
+caminho de escrita da web para o processo. Essa é uma escolha de segurança, não uma
+limitação pendente.</p>
+
+<h2><span class="num">3</span>Camada 1 — CLP Siemens S7</h2>
+
+<p>Um bloco de função em <strong>SCL</strong> (<code>FC "07 - SUPERVISORIO"</code>,
+275 linhas) publica o estado da célula nas holdings livres do Modbus que já existia
+no projeto. Ele foi escrito para ser carregado <strong>uma vez</strong>: exporta tudo
+o que a célula tem de útil, inclusive o que o supervisório ainda não consome. Word
+sobrando no Modbus é de graça; outra intervenção no CLP, não.</p>
+
+<table>
+  <caption>Mapa de holdings — 25 words usadas, HR35–99 livres</caption>
+  <thead><tr><th class="mono">HR</th><th>Tipo</th><th>Conteúdo</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">0–3</td><td>—</td><td>Integração da balança Toledo, <strong>intocada</strong>; HR4–9 de folga proposital para ela crescer</td></tr>
+    <tr><td class="mono">10</td><td>bits</td><td>Robô: run, servo, master job, falha, remoto, home, lado ativo, vácuo, encaixotamento</td></tr>
+    <tr><td class="mono">11</td><td>bits</td><td>Célula e segurança: sensores, presença de palete (SP4/SP5), portas, barreiras, emergência</td></tr>
+    <tr><td class="mono">12–14</td><td>Int</td><td>Passos das sequências de inicialização e dos dois lados</td></tr>
+    <tr><td class="mono">15–22</td><td>Int</td><td>Quantidade do lado ativo, posição no mosaico, camada, alturas, deslocamentos</td></tr>
+    <tr><td class="mono">23–25</td><td>Int</td><td>Alarmes do robô e da balança, pressão de ar em centésimos de bar</td></tr>
+    <tr><td class="mono">26</td><td>Int</td><td><strong>Heartbeat</strong> — incrementa a cada ciclo</td></tr>
+    <tr><td class="mono">27–30</td><td>misto</td><td>Paletes produzidos, causas da emergência, mosaico ativo, torre e vácuos</td></tr>
+    <tr><td class="mono">31–34</td><td>Int</td><td>Status do robô, de cada lado, e modo auto/manual</td></tr>
+  </tbody>
+</table>
+
+<div class="nota">
+  <div class="r">Duas decisões de projeto que evitam parada de linha</div>
+  <p><strong>Porta 503, não 502.</strong> A 502 já tem um cliente: a balança, que
+  escreve nas holdings 1 e 2. Uma instância de <code>MB_SERVER</code> atende uma
+  conexão, e duas instâncias na mesma porta são intercambiáveis — o gateway,
+  reconectando, poderia ocupar a vaga da balança. O life bit dela congelaria, o
+  alarme subiria e a linha pararia. Porta própria é vaga reservada.</p>
+  <p><strong>Heartbeat como prova de vida.</strong> O Modbus responde exatamente
+  igual com o CPU em STOP. Só um contador andando prova que o programa executa — e é
+  por isso que HR26 existe e é ele, não a conexão, que define o estado
+  <code>plcOk</code>.</p>
+</div>
+
+<h2><span class="num">4</span>Camada 2 — Gateway Modbus → MQTT</h2>
+
+<p>Processo Node.js que roda no PC da fábrica. Lê HR0–HR34 a cada 100 ms com
+<code>modbus-serial</code>, decodifica bit a bit para um objeto tipado, e publica no
+broker. Três características valem registro, todas nascidas de defeito observado em
+operação:</p>
+
+<ul>
+  <li><strong>Publica quando muda, e uma vez por segundo de qualquer forma.</strong>
+  Publicar só na mudança economiza rede, mas cria um engano: célula parada com CLP
+  rodando não muda nada, o gateway emudece, e o supervisório — que exige mensagem
+  recente — anuncia falha onde não há. Silêncio não é falha, e o sinal de vida a cada
+  segundo faz o critério de frescor significar o que deve: o gateway está vivo.</li>
+
+  <li><strong>Quando o Modbus cai, ele diz.</strong> A publicação vive dentro da
+  leitura bem-sucedida, então um timeout emudecia o gateway e a última mensagem
+  retida no broker continuava afirmando <code>plcOk: true</code> indefinidamente —
+  uma mentira com cara de verdade. Hoje, sem contato, o último retrato é republicado
+  com <code>plcOk: false</code> e hora nova.</li>
+
+  <li><strong>Uma leitura Modbus de cada vez.</strong> O timeout é de 1,5 s (35
+  holdings num S7 que também atende a balança, em rede de fábrica, não caberiam em
+  meio segundo). Sem trava de reentrância, o polling de 100 ms empilharia dezenas de
+  requisições na mesma conexão, e o congestionamento que causou o primeiro timeout
+  causaria todos os seguintes.</li>
+</ul>
+
+<h3>Empacotamento para o PC da fábrica</h3>
+
+<p>Esse PC não alcança o registro do npm, e a rede da empresa barra executáveis em
+pasta compartilhada — o que inclui os binários dentro de <code>node_modules</code>.
+A solução é o <strong>esbuild</strong> gerando dois arquivos de JavaScript puro, com
+todas as dependências embutidas: <code>index.cjs</code> e
+<code>testa-modbus.cjs</code>. Nenhum <code>.exe</code>, <code>.dll</code> ou
+<code>.node</code>; o PC precisa apenas ter o Node.js. A receita é um script do
+<code>package.json</code>, versionada junto com o código que empacota.</p>
+
+<h2><span class="num">5</span>Camada 3 — Broker MQTT</h2>
+
+<p>HiveMQ Cloud, TLS na porta 8883, um tópico por célula, mensagens
+<strong>retained</strong> — quem assina recebe imediatamente o último estado
+conhecido, sem esperar o próximo evento. A credencial vai separada da URL de
+propósito: senha com <code>@</code>, <code>:</code>, <code>/</code> ou <code>#</code>
+não sobrevive dentro de uma URL, e não é a senha que deve ceder.</p>
+
+<p>Um tópico paralelo terminado em <code>/TESTE</code> é usado para validação, com um
+CLP sintético que reproduz cenários difíceis — troca de lado, recuo de falha,
+emergência, retirada de palete, sensor travado. Todas as correções deste projeto foram
+verificadas nele antes de ir ao ar, e nunca no tópico de produção.</p>
+
+<h2><span class="num">6</span>Camada 4 — Servidor web</h2>
+
+<p>Node.js com <strong>Express</strong> servindo o cliente compilado,
+<strong>ws</strong> para o WebSocket de estado a 25 Hz, e
+<strong>cookie-session</strong> com <strong>OAuth 2.0 do Google</strong> restringindo
+o acesso ao domínio corporativo. O <em>upgrade</em> do WebSocket passa pela mesma
+sessão do cookie — não há porta lateral para o fluxo de dados.</p>
+
+<h3>Duas fontes, um contrato</h3>
+
+<p>O servidor mantém duas fontes que emitem exatamente o mesmo objeto de estado: o
+<strong>simulador</strong>, que gera um ciclo completo por conta própria, e a
+<strong>fonte real</strong>, que traduz o MQTT. O cliente não sabe a diferença, o que
+significa que o simulador é um ambiente de desenvolvimento e demonstração legítimo, e
+não um caminho de código paralelo que apodrece.</p>
+
+<p>A escolha da fonte é <strong>por navegador</strong>, guardada num
+<code>WeakMap</code> indexado pela conexão. Quem está de olho na célula em produção
+não pode ter a tela trocada porque outra pessoa, noutra sala, abriu o simulador para
+demonstrar. O padrão é <strong>REAL</strong>: quem abre um supervisório quer ver a
+célula, e um robô se movendo bonito no lugar de dados ausentes seria pior que uma
+tela vazia.</p>
+
+<h2><span class="num">7</span>O gêmeo digital</h2>
+
+<p>É o núcleo técnico do projeto e a parte que não vem de biblioteca nenhuma.</p>
+
+<h3>Cinemática</h3>
+
+<p>As dimensões vêm da folha de dados do GP12. A posição de cada caixa no palete é
+resolvida por <strong>cinemática inversa</strong> para os eixos L e U, com o eixo S
+saindo do ângulo no plano; a orientação da caixa vem do padrão do mosaico, não do
+braço. Entre pontos há interpolação ponto a ponto com perfil de velocidade
+(<code>Ptp</code>), e a entrada na pilha usa <strong>movimento linear</strong>
+cartesiano — é como o robô real assenta a caixa, e evita a trajetória em arco que
+atravessaria a pilha vizinha.</p>
+
+<h3>O padrão catavento</h3>
+
+<p>Cada palete recebe 32 caixas: quatro grupos de quatro por camada, duas camadas.
+As sequências não são espelhos automáticas entre os dois lados — cada uma foi
+conferida na cena e corrigida pelo operador, e vive em quatro tabelas explícitas no
+código. Mudar o padrão é editar tabela, não reescrever lógica.</p>
+
+<h3>Quem manda no movimento</h3>
+
+<p>Um único sinal governa a caixa da entrada: <strong>peça em posição na
+balança</strong>. Ligado, há caixa nos roletes esperando o robô; ao cair, o robô a
+retirou e o braço parte para o palete; o incremento do contador encerra o transporte.
+A pilha desenhada é reconstituída pelas mesmas tabelas do padrão, de modo que a
+contagem na tela é igual à do CLP por construção — inclusive quando a célula recua
+para o múltiplo de quatro após uma falha.</p>
+
+<div class="nota">
+  <div class="r">Medição antes de implementação</div>
+  <p>Três sinais que seriam a escolha natural para dirigir a animação estão
+  <strong>mortos</strong> no dado real, medidos em 106 mensagens do tópico de
+  produção: <code>VC1 - VACUO OK GARRA</code>,
+  <code>ROBO - CAIXA EM INDEXADOR</code> e
+  <code>SFC2 - INDEXADOR CAIXA AVANCADO</code> permanecem em zero
+  permanentemente. Amarrar a lógica a qualquer um deles congelaria a cena. Por isso a
+  autoridade é da balança, que alterna de verdade.</p>
+</div>
+
+<h2><span class="num">8</span>Camada 5 — Cliente 3D</h2>
+
+<p><strong>React 18</strong> com <strong>TypeScript</strong>, empacotado por
+<strong>Vite 5</strong>, e <strong>three.js</strong> através de
+<code>@react-three/fiber</code> e <code>@react-three/drei</code>.</p>
+
+<p>A geometria é <strong>procedural</strong>, não malha de CAD: o corpo do robô, a
+esteira, a balança de roletes, a seladora e as caixas são construídos por código a
+partir de primitivas, com o braço inferior curvo saído de uma extrusão sobre curva
+Catmull-Rom, e os rótulos (logotipo, marcas) desenhados em <code>CanvasTexture</code>.
+Isso mantém o pacote em torno de 1 MB comprimido, em vez dos dezenas de megabytes de
+um STEP importado, e torna cada detalhe ajustável por parâmetro.</p>
+
+<p>Uma decisão de desempenho atravessa o cliente inteiro: o estado que chega a 25 Hz
+não vira <em>state</em> do React. Ele é escrito numa <em>ref</em>, e cada componente
+da cena o lê dentro de <code>useFrame</code>, interpolando na taxa do monitor. Sem
+isso, haveria 25 reconciliações por segundo numa árvore de centenas de objetos. A
+consequência arquitetural é clara: <strong>o servidor cronometra, o cliente
+interpola</strong> — inclusive as animações de chegada da caixa pela esteira e de
+saída do palete na empilhadeira, cujo progresso vem pronto do servidor.</p>
+
+<h2><span class="num">9</span>Quadro de tecnologias</h2>
+
+<table>
+  <caption>Dependências de produção e ferramental</caption>
+  <thead><tr><th>Camada</th><th>Tecnologia</th><th class="mono">Versão</th><th>Papel</th></tr></thead>
+  <tbody>
+    <tr><td>CLP</td><td>SCL / Structured Text</td><td class="mono">TIA Portal</td><td>Bloco de função que publica o estado no Modbus</td></tr>
+    <tr><td>Gateway</td><td>modbus-serial</td><td class="mono">8.0</td><td>Cliente Modbus TCP</td></tr>
+    <tr><td>Gateway · web</td><td>mqtt</td><td class="mono">5.10</td><td>Publicação e assinatura no broker</td></tr>
+    <tr><td>Gateway</td><td>esbuild</td><td class="mono">0.21</td><td>Empacotamento em arquivo único sem executáveis</td></tr>
+    <tr><td>Servidor</td><td>Node.js</td><td class="mono">20</td><td>Runtime das duas pontas fora do navegador</td></tr>
+    <tr><td>Servidor</td><td>Express</td><td class="mono">4.19</td><td>HTTP, estáticos e rotas de autenticação</td></tr>
+    <tr><td>Servidor</td><td>ws</td><td class="mono">8.18</td><td>WebSocket de estado a 25 Hz</td></tr>
+    <tr><td>Servidor</td><td>cookie-session</td><td class="mono">2.1</td><td>Sessão assinada, compartilhada com o WebSocket</td></tr>
+    <tr><td>Servidor</td><td>OAuth 2.0 Google</td><td class="mono">—</td><td>Login restrito ao domínio corporativo</td></tr>
+    <tr><td>Cliente</td><td>React</td><td class="mono">18.3</td><td>Estrutura da interface e da cena</td></tr>
+    <tr><td>Cliente</td><td>three.js</td><td class="mono">0.168</td><td>WebGL: geometria, materiais, sombras</td></tr>
+    <tr><td>Cliente</td><td>@react-three/fiber</td><td class="mono">8.17</td><td>three.js declarativo em React</td></tr>
+    <tr><td>Cliente</td><td>@react-three/drei</td><td class="mono">9.114</td><td>Controles de órbita, grade, utilidades</td></tr>
+    <tr><td>Build</td><td>Vite</td><td class="mono">5.4</td><td>Bundler e servidor de desenvolvimento</td></tr>
+    <tr><td>Todo</td><td>TypeScript</td><td class="mono">5.6</td><td>Tipagem estrita ponta a ponta, contrato compartilhado</td></tr>
+    <tr><td>Dev</td><td>tsx · concurrently · aedes</td><td class="mono">—</td><td>Execução direta de TS, orquestração, broker local</td></tr>
+    <tr><td>Implantação</td><td>Docker · Render</td><td class="mono">—</td><td>Imagem e hospedagem do servidor web</td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">10</span>Volume de código</h2>
+
+<table>
+  <caption>Linhas por módulo, sem dependências</caption>
+  <thead><tr><th>Módulo</th><th>Responsabilidade</th><th class="n">Linhas</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">server/simulator.ts</td><td>Cinemática, tabelas do catavento, roteiro, simulador</td><td class="n">525</td></tr>
+    <tr><td class="mono">server/fonte-mqtt.ts</td><td>Gêmeo digital dirigido pelos sinais reais</td><td class="n">500</td></tr>
+    <tr><td class="mono">client/scene/Cell.tsx</td><td>Cena 3D: célula, esteira, paletes, animações</td><td class="n">379</td></tr>
+    <tr><td class="mono">client/scene/Robot.tsx</td><td>Geometria e articulação do GP12</td><td class="n">297</td></tr>
+    <tr><td class="mono">plc/07_SUPERVISORIO.scl</td><td>Bloco de função do CLP</td><td class="n">275</td></tr>
+    <tr><td class="mono">gateway/clp-falso.ts</td><td>CLP sintético para validação de cenários</td><td class="n">273</td></tr>
+    <tr><td class="mono">client/ui/Panel.tsx</td><td>Painel de status e comandos</td><td class="n">262</td></tr>
+    <tr><td class="mono">gateway/index.ts</td><td>Leitura Modbus e publicação MQTT</td><td class="n">228</td></tr>
+    <tr><td class="mono">server/index.ts</td><td>HTTP, WebSocket, autenticação, fontes</td><td class="n">208</td></tr>
+    <tr><td class="mono">shared/types.ts</td><td>Contrato entre servidor, cliente e gateway</td><td class="n">198</td></tr>
+    <tr><td>demais módulos</td><td>Ferramenta, estilos, testes de conexão, entrada</td><td class="n">410</td></tr>
+    <tr class="total"><td>Total</td><td>32 arquivos versionados</td><td class="n">3.555</td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">11</span>Princípios que o código segue</h2>
+
+<p>Cinco regras foram destiladas de defeitos reais e valem como critério de revisão
+para quem continuar o projeto:</p>
+
+<ul>
+  <li><strong>Nível e borda não se confundem.</strong> Quase todo sinal da célula é
+  nível; evento é borda. Ler o vácuo como nível fazia o braço oscilar sem sair do
+  lugar, e a segunda borda de um mesmo apanhar fazia o braço recuar no meio do
+  caminho até o palete.</li>
+
+  <li><strong>Silêncio não é falha, e ausência de dado não é dado.</strong> Ausência
+  de mensagem tem de ser distinguível de ausência de mudança — daí o sinal de vida no
+  gateway e o critério de frescor no servidor.</li>
+
+  <li><strong>Nunca desenhar o que não se viu acontecer.</strong> A pilha só aparece
+  pelos eventos observados. Chutar que um palete parado está cheio pintou 32 caixas
+  onde havia quatro; mostrar menos do que existe é falta de informação, mostrar caixa
+  inventada é mentira, e num supervisório mentira é pior.</li>
+
+  <li><strong>O que aponta o braço e o que se desenha são coisas diferentes.</strong>
+  A contagem que decide em que palete o robô trabalha vem só dos bits de lado. A
+  contagem desenhada tem memória por lado. Misturar as duas levava o braço ao palete
+  errado.</li>
+
+  <li><strong>Previsão tem prazo de validade.</strong> A animação da caixa chegando
+  pela esteira é uma previsão; quem confirma que há caixa nos roletes é a balança.
+  Sem prazo, uma previsão não confirmada deixava uma caixa parada na balança para
+  sempre.</li>
+</ul>
+
+<h2><span class="num">12</span>Implantação</h2>
+
+<p>O servidor web é publicado por imagem <strong>Docker</strong> na
+<strong>Render</strong>, com segredos em variáveis de ambiente — credenciais do
+Google, segredo de sessão, domínio autorizado e acesso ao broker. O gateway roda no
+PC da fábrica, iniciado pelo Agendador de Tarefas do Windows com log em arquivo. O
+repositório é reprodutível a partir do clone: instalação por
+<code>package-lock.json</code>, verificação de tipos, build do cliente e geração do
+pacote do gateway, todos verificados em clone limpo.</p>
+
+<h2><span class="num">13</span>Limites conhecidos</h2>
+
+<ul>
+  <li><strong>Sinais mortos no CLP.</strong> Os três citados na seção 7 precisam ser
+  verificados na célula. Enquanto não alternarem, não podem dirigir nada.</li>
+
+  <li><strong>Mosaico fixo em código.</strong> HR29 já transporta qual dos sete
+  padrões está ativo, mas o desenho ainda usa as tabelas do padrão corrente. Com
+  outro produto, a contagem ficaria certa e as posições erradas até esse consumo ser
+  implementado.</li>
+
+  <li><strong>Pilha só a partir do observado.</strong> Abrindo a tela no meio de um
+  turno, o palete do lado que o robô não está atendendo aparece vazio até a próxima
+  troca de lado. Há sinais candidatos a preencher esse vão, ainda de semântica não
+  confirmada.</li>
+
+  <li><strong>Descarte de peça reprovada.</strong> O caminho de descarte está
+  modelado na cena mas desativado, aguardando validação da regra na célula.</li>
+</ul>
+
+<footer>
+  <span>Supervisório 3D · Célula R-01 · Descritivo técnico</span>
+  <span>Yaskawa Motoman GP12 · Siemens S7 · Node.js · three.js</span>
+</footer>
+
+</body>
+</html>

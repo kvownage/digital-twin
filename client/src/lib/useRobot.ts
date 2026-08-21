@@ -21,7 +21,7 @@ export interface RobotLink {
 
 const LAYOUT_PADRAO: HelloMsg["layout"] = {
   pick: { r: 1150, top: 550 },
-  pallet: { size: 1200, top: 150, r: 900 },
+  pallet: { size: 1200, top: 150, r: 1150 },
   box: { w: 500, d: 150, h: 570 },
   pedestal: 400,
 };

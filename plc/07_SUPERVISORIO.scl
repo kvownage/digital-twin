@@ -62,10 +62,15 @@ BEGIN
    #wSt2.%X0  := "SP3 - ESTEIRA DE ENTRADA";
    #wSt2.%X1  := "SFC2 - INDEXADOR CAIXA AVANCADO";
    #wSt2.%X2  := "SP1 - SENSOR PECA ROBO";
-   #wSt2.%X3  := "SP1 - SENSOR PRESENÇA DE PALETE LADO 1";
-   #wSt2.%X4  := "SP2 - SENSOR PRESENÇA DE PALETE LADO 2";
-   #wSt2.%X5  := "SP4 - PALETE LADO 01";
-   #wSt2.%X6  := "SP5 - PALETE LADO 02";
+   // PRESENÇA DE PALETE: valem SP4 e SP5. Os SP1/SP2 do mesmo nome NÃO são
+   // presença de palete de verdade (confirmado pelo autor da célula) e ficam
+   // de fora de propósito. Bits 5 e 6 reservados.
+   #wSt2.%X3  := "SP4 - PALETE LADO 01";
+   #wSt2.%X4  := "SP5 - PALETE LADO 02";
+   // EMERGÊNCIA consolidada do DB "COMANDOS" (bit 5) e a causa por botão
+   // (bit 6). É o que faz o gêmeo congelar o braço onde estava.
+   #wSt2.%X5  := "COMANDOS"."EMERGENCIA";
+   #wSt2.%X6  := "COMANDOS"."EMERGENCIA BOTOES";
    #wSt2.%X7  := "ESTEIRA ENTRADA";
    #wSt2.%X8  := "ESTEIRA SAIDA";
    #wSt2.%X9  := "DESABILITA SELADORA";
@@ -102,6 +107,7 @@ BEGIN
    "MODBUS HOLDINGS".HOLDINGS[20] := INT_TO_WORD("ROBO - RETORNO SHIFT Y");
    "MODBUS HOLDINGS".HOLDINGS[21] := INT_TO_WORD("ROBO - RETORNO SHIFT Z");
    "MODBUS HOLDINGS".HOLDINGS[22] := INT_TO_WORD("ROBO - CAMADA");
+   "MODBUS HOLDINGS".HOLDINGS[27] := INT_TO_WORD("COMANDOS"."PALETES PRODUZIDOS");
 
    // =========================================================================
    //  HR 23..25 — alarmes e pressão

@@ -200,6 +200,9 @@ export function Robot({ live }: { live: React.MutableRefObject<RobotState | null
   useFrame((_s, dt) => {
     const st = live.current;
     if (!st) return;
+    // EMERGÊNCIA: o braço congela ONDE ESTAVA. Nem termina o movimento, nem
+    // volta para casa — é o que a categoria de segurança faz na célula real.
+    if (st.emergencia) return;
     const k = Math.min(1, dt * 14);
     for (let i = 0; i < 3; i++) cur.current[i] += (st.j[i] - cur.current[i]) * k;
     const [S, L, U] = cur.current;

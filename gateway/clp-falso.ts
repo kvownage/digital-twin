@@ -69,7 +69,8 @@ const sorte = (p: number) => Math.random() < p * CAOS;
 
 // ---- o "processo" ----------------------------------------------------------
 type Fase = "ESPERA" | "CHEGANDO" | "PESANDO" | "PRONTA" | "REPROVADA"
-          | "PEGOU" | "SOLTANDO" | "FALHA" | "TROCA_PALETE";
+          | "PEGOU" | "SOLTANDO" | "FALHA" | "RETIRA_MANUAL" | "TROCA_PALETE"
+          | "EMERGENCIA";
 
 let fase: Fase = "ESPERA";
 let t = 0;                 // s na fase atual
@@ -78,6 +79,7 @@ let qtd = 0;               // contagem do lado ativo
 let lado2 = false;
 let hb = 0;
 let descartes = 0;
+let paletes = 0;      // paletes completos produzidos
 let pressao = 6.2;
 let voltaDe: Fase = "ESPERA";   // para onde voltar depois da falha
 
@@ -87,7 +89,9 @@ const BASE: Record<Fase, number> = {
   PEGOU: 4.2,            // transporte até o palete
   SOLTANDO: 1.4,         // deposita e recua
   FALHA: 6.0,            // robô parado até o reset
+  RETIRA_MANUAL: 5.0,    // operador tirando as caixas do grupo incompleto
   TROCA_PALETE: 8.0,     // empilhadeira levando o palete cheio
+  EMERGENCIA: 9.0,       // alguém bateu no cogumelo; robô congelado
 };
 
 function entra(f: Fase) {
@@ -139,8 +143,14 @@ function avanca(dt: number) {
       if (qtd >= POR_PALETE) {
         qtd = 0;
         lado2 = !lado2;
-        console.log(`[clp-falso] palete cheio -> trocando, agora lado ${lado2 ? 2 : 1}`);
+        paletes++;
+        console.log(`[clp-falso] palete cheio (${paletes} produzidos) -> lado ${lado2 ? 2 : 1}`);
         entra("TROCA_PALETE");
+      } else if (sorte(1 / 90)) {
+        // Alguém bateu no cogumelo: o robô congela ONDE ESTAVA.
+        voltaDe = "ESPERA";
+        console.log("[clp-falso] EMERGENCIA — robo congelado onde estava");
+        entra("EMERGENCIA");
       } else if (sorte(1 / 60)) {
         // Falha esporádica do robô: é o que faz a tela mostrar ROBÔ EM FALHA
         // e o gêmeo congelar onde está.
@@ -152,8 +162,32 @@ function avanca(dt: number) {
       }
       break;
 
-    case "FALHA":
-      console.log("[clp-falso] falha reconhecida, retomando");
+    case "FALHA": {
+      // REGRA DA CÉLULA: ao recuperar, o robô retoma no início do GRUPO de 4
+      // (a "seta" do catavento). Falha na caixa 18 -> recomeça da 16; na 6 ->
+      // da 4. As caixas do grupo incompleto o operador retira à mão, e o
+      // contador do CLP volta — então a pilha da tela encolhe junto.
+      const retomada = Math.floor(qtd / 4) * 4;
+      const retirar = qtd - retomada;
+      if (retirar > 0) {
+        console.log(`[clp-falso] falha na caixa ${qtd} -> retoma da ${retomada}; ` +
+                    `operador retira ${retirar} caixa(s)`);
+        qtd = retomada;
+        entra("RETIRA_MANUAL");
+      } else {
+        console.log(`[clp-falso] falha na caixa ${qtd} (inicio de grupo) — nada a retirar`);
+        entra(voltaDe);
+      }
+      break;
+    }
+
+    case "RETIRA_MANUAL":
+      console.log("[clp-falso] operador liberou, retomando o ciclo");
+      entra(voltaDe);
+      break;
+
+    case "EMERGENCIA":
+      console.log("[clp-falso] emergencia liberada, rearmando");
       entra(voltaDe);
       break;
 
@@ -165,7 +199,9 @@ function avanca(dt: number) {
 
 function payload(): RealPayload {
   const naGarra = fase === "PEGOU" || fase === "SOLTANDO";
-  const emFalha = fase === "FALHA";
+  // Durante a retirada manual o robô continua parado e a torre acesa: para
+  // quem olha a tela, a célula ainda está intervinda.
+  const emFalha = fase === "FALHA" || fase === "RETIRA_MANUAL";
   const trocando = fase === "TROCA_PALETE";
   const naBalanca = fase === "PESANDO" || fase === "PRONTA" || fase === "REPROVADA";
 
@@ -186,13 +222,16 @@ function payload(): RealPayload {
       caixaNaEsteira: fase === "CHEGANDO",
       indexadorAvancado: fase === "PRONTA",
       pecaNoRobo: naGarra,
-      // Durante a troca, o palete cheio sai: os sensores caem.
-      palete1: !(trocando && !lado2), palete2: !(trocando && lado2),
-      palete1b: !(trocando && !lado2), palete2b: !(trocando && lado2),
+      // Durante a troca, o palete cheio SAI: o sensor daquele lado cai, e a
+      // cena deixa de desenhar o palete e a pilha.
+      palete1: !(trocando && !lado2),
+      palete2: !(trocando && lado2),
       esteiraEntrada: !emFalha, esteiraSaida: !emFalha,
       seladoraDesabilitada: false, automatico: true,
       porta1: true, porta2: true, barreira1: true, barreira2: true,
       torreVermelha: emFalha,
+      emergencia: false,
+      emergenciaBotao: false,
     },
     passos: {
       inicializacao: 10,
@@ -207,6 +246,7 @@ function payload(): RealPayload {
     shiftY: 0,
     shiftZ: 0,
     camadaComando: Math.floor(qtd / 16) + 1,
+    paletesProduzidos: paletes,
     // Alarme do robô com código, para a tela ter o que mostrar.
     almRobo: emFalha ? 4021 : 0,
     almBalanca: 0,

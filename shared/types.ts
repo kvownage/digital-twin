@@ -26,6 +26,14 @@ export interface RobotState {
   ritmo: number;
   /** Multiplicador de tempo da simulação (dev). 1 = tempo real. */
   turbo: number;
+  /** Presença de palete nos dois lados (SP4/SP5). Sem palete, a cena não
+   *  desenha nem o palete nem a pilha — nada de pilha fantasma. */
+  paleteA: boolean;
+  paleteB: boolean;
+  /** Célula em emergência: o braço congela onde estava. */
+  emergencia: boolean;
+  /** Paletes completos produzidos (contador do CLP). */
+  paletesProduzidos: number;
   /** De onde os dados vêm agora. */
   fonte: "sim" | "real";
   /** Em modo real: o broker está entregando dados frescos? */
@@ -97,10 +105,13 @@ export interface RealPayload {
   /** HR11 — célula e segurança */
   celula: {
     caixaNaEsteira: boolean; indexadorAvancado: boolean; pecaNoRobo: boolean;
-    palete1: boolean; palete2: boolean; palete1b: boolean; palete2b: boolean;
+    /** Presença de palete: SP4 e SP5 (os SP1/SP2 não são presença real). */
+    palete1: boolean; palete2: boolean;
     esteiraEntrada: boolean; esteiraSaida: boolean; seladoraDesabilitada: boolean;
     automatico: boolean; porta1: boolean; porta2: boolean;
     barreira1: boolean; barreira2: boolean; torreVermelha: boolean;
+    /** Emergência consolidada do DB COMANDOS, e a causa por botão. */
+    emergencia: boolean; emergenciaBotao: boolean;
   };
 
   /** HR12..14 — passos das sequências (DB "ESTADOS") */
@@ -115,6 +126,9 @@ export interface RealPayload {
   shiftY: number;
   shiftZ: number;
   camadaComando: number;
+
+  /** HR27 — paletes completos produzidos (contador do DB COMANDOS). */
+  paletesProduzidos: number;
 
   /** HR23..25 */
   almRobo: number;

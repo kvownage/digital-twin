@@ -69,6 +69,15 @@ aside{display:flex;flex-direction:column;gap:14px}
 }
 .state b{font-size:15px;font-weight:600;letter-spacing:.04em}
 
+/* Emergência: vermelho, pulsando. É a única coisa na tela que grita. */
+.state.emerg{background:color-mix(in srgb,#E5484D 18%,transparent);border-radius:5px}
+.state.emerg b{color:#FF6369}
+.state.emerg .lamp{background:#E5484D;box-shadow:0 0 12px #E5484D}
+@media (prefers-reduced-motion:no-preference){
+  .state.emerg .lamp{animation:emerg .7s steps(1,end) infinite}
+  @keyframes emerg{50%{background:#5A1D20;box-shadow:none}}
+}
+
 .readouts{padding:6px 12px 12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 12px}
 .readouts .full{grid-column:1/-1}
 .ro label{display:block;font-size:10px;letter-spacing:.14em;color:var(--muted);margin-bottom:2px}

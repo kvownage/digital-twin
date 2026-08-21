@@ -25,7 +25,7 @@ const MQTT_URL = process.env.MQTT_URL ?? "mqtt://localhost:1883";
 const TOPICO = process.env.MQTT_TOPICO ?? "multilaser/paletizadora/r01/estado";
 
 const POLL_MS = 100;
-const QTD_REG = 27;                  // HR0..HR26
+const QTD_REG = 28;                  // HR0..HR27
 const HEARTBEAT_TIMEOUT_MS = 2000;
 
 // Int16 chega como UInt16 do modbus-serial — devolve o sinal.
@@ -94,13 +94,15 @@ async function le() {
 
       celula: {
         caixaNaEsteira: bit(st2, 0), indexadorAvancado: bit(st2, 1),
-        pecaNoRobo: bit(st2, 2), palete1: bit(st2, 3), palete2: bit(st2, 4),
-        palete1b: bit(st2, 5), palete2b: bit(st2, 6),
+        pecaNoRobo: bit(st2, 2),
+        // Presença de palete: SP4 (bit 3) e SP5 (bit 4). Bits 5/6 reservados.
+        palete1: bit(st2, 3), palete2: bit(st2, 4),
         esteiraEntrada: bit(st2, 7), esteiraSaida: bit(st2, 8),
         seladoraDesabilitada: bit(st2, 9), automatico: bit(st2, 10),
         porta1: bit(st2, 11), porta2: bit(st2, 12),
         barreira1: bit(st2, 13), barreira2: bit(st2, 14),
         torreVermelha: bit(st2, 15),
+        emergencia: bit(st2, 5), emergenciaBotao: bit(st2, 6),
       },
 
       passos: {
@@ -117,6 +119,7 @@ async function le() {
       shiftY: int16(data[20]),
       shiftZ: int16(data[21]),
       camadaComando: int16(data[22]),
+      paletesProduzidos: int16(data[27]),
 
       almRobo: int16(data[23]),
       almBalanca: int16(data[24]),

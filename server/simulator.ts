@@ -53,7 +53,10 @@ export const FEED = {
   settle: 0.9,          // s de estabilização da pesagem
 } as const;
 export const PALLET = {
-  size: 1200, top: 150, r: 900,   // raio do CENTRO do palete ao eixo do robô
+  // 1150 mm do eixo do robô ao centro do palete: afastado o bastante para o
+  // operador e a empilhadeira circularem sem esbarrar na base, e ainda dentro
+  // do alcance do GP12 no pedestal de 800.
+  size: 1200, top: 150, r: 1150,
   layers: 2,                      // catavento de 16 por camada, 2 camadas = 32
 } as const;
 
@@ -521,6 +524,11 @@ export class Gp12Simulator extends EventEmitter {
       running: this.running,
       ritmo: this.ritmo,
       turbo: this.turbo,
+      // No simulador os dois paletes estao sempre presentes, menos na troca.
+      emergencia: false,      // o simulador nao gera emergencia
+      paletesProduzidos: 0,
+      paleteA: !this.trocando,
+      paleteB: !this.trocando,
       fonte: "sim",
       realOk: false,        // o index.ts sobrescreve com o frescor da fonte real
       tcp: fkTcp(this.j),

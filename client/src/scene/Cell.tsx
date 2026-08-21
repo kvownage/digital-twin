@@ -1,6 +1,6 @@
 // ============================================================================
-//  A célula de paletização: esteira de entrada à frente, um palete de cada
-//  lado do robô, a pilha crescendo caixa a caixa. O Canvas inteiro mora aqui.
+//  A cÃ©lula de paletizaÃ§Ã£o: esteira de entrada Ã  frente, um palete de cada
+//  lado do robÃ´, a pilha crescendo caixa a caixa. O Canvas inteiro mora aqui.
 // ============================================================================
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Grid, OrbitControls } from "@react-three/drei";
@@ -15,7 +15,45 @@ const rad = (d: number) => (d * Math.PI) / 180;
 const PAPELAO = "#A97C4B";
 const MADEIRA = "#7A5C36";
 
-/** Palete de madeira: tampo + três longarinas. */
+/** Mostra os filhos sÃ³ enquanto o sensor de palete (SP4/SP5) daquele lado
+ *  estiver ativo. Some junto com o palete â€” sem pilha fantasma. */
+function Presenca({ live, lado, children }: {
+  live: React.MutableRefObject<RobotState | null>;
+  lado: "A" | "B";
+  children: React.ReactNode;
+}) {
+  const ref = useRef<THREE.Group>(null!);
+  useFrame(() => {
+    const st = live.current;
+    if (!st) return;
+    ref.current.visible = lado === "A" ? st.paleteA : st.paleteB;
+  });
+  return <group ref={ref}>{children}</group>;
+}
+
+/** Batente em L, amarelo, chumbado no chÃ£o: demarca a posiÃ§Ã£o do palete e
+ *  continua visÃ­vel quando o palete sai â€” o vazio fica com endereÃ§o. */
+function Batente({ z, size, lado }: { z: number; size: number; lado: 1 | -1 }) {
+  const AMARELO = "#D8A21B";
+  const esp = 80, alt = 110;              // espessura e altura do perfil
+  const meia = size / 2 + esp / 2;        // afastamento do centro do palete
+  return (
+    <group position={[0, 0, z]}>
+      {/* braco LATERAL (corre ao longo de Z): fica em +X, do lado da balança */}
+      <mesh position={[+meia, alt / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[esp, alt, size + esp]} />
+        <meshStandardMaterial color={AMARELO} roughness={0.65} metalness={0.15} />
+      </mesh>
+      {/* braco TRANSVERSAL (corre ao longo de X): fica do lado de DENTRO,
+          voltado para o robô — junto com o lateral fecha o L */}
+      <mesh position={[0, alt / 2, -lado * meia]} castShadow receiveShadow>
+        <boxGeometry args={[size + esp, alt, esp]} />
+        <meshStandardMaterial color={AMARELO} roughness={0.65} metalness={0.15} />
+      </mesh>
+    </group>
+  );
+}
+/** Palete de madeira: tampo + trÃªs longarinas. */
 function Palete({ z, size, top }: { z: number; size: number; top: number }) {
   return (
     <group position={[0, 0, z]}>
@@ -33,7 +71,7 @@ function Palete({ z, size, top }: { z: number; size: number; top: number }) {
   );
 }
 
-/** Etiqueta "TOLEDO" — textura de canvas, gerada uma vez. */
+/** Etiqueta "TOLEDO" â€” textura de canvas, gerada uma vez. */
 let etiquetaToledo: THREE.CanvasTexture | null = null;
 function toledoTex(): THREE.CanvasTexture {
   if (etiquetaToledo) return etiquetaToledo;
@@ -51,12 +89,12 @@ function toledoTex(): THREE.CanvasTexture {
 }
 
 /** A entrada: esteira de correia (um pouco maior que a caixa) alimentando a
- *  balança Toledo de roletes, onde a caixa para para a pesagem dinâmica. */
+ *  balanÃ§a Toledo de roletes, onde a caixa para para a pesagem dinÃ¢mica. */
 function Entrada({ r, top }: { r: number; top: number }) {
   const rolos = [-262, -187, -112, -37, 38, 113, 188, 263];
   return (
     <group>
-      {/* ---- esteira de correia: fininha — a caixa passa de lombada (150).
+      {/* ---- esteira de correia: fininha â€” a caixa passa de lombada (150).
               Estrutura clara e correia VERDE industrial, para ler na cena ---- */}
       <group position={[r + 655, 0, 0]}>
         <mesh position={[0, top - 35, 0]} castShadow receiveShadow>
@@ -76,9 +114,9 @@ function Entrada({ r, top }: { r: number; top: number }) {
         ))}
       </group>
 
-      {/* ---- balança Toledo de roletes ---- */}
+      {/* ---- balanÃ§a Toledo de roletes ---- */}
       <group position={[r, 0, 0]}>
-        {/* corpo da balança (a célula de carga mora aqui) */}
+        {/* corpo da balanÃ§a (a cÃ©lula de carga mora aqui) */}
         <mesh position={[0, top - 95, 0]} castShadow receiveShadow>
           <boxGeometry args={[600, 130, 460]} />
           <meshStandardMaterial color="#26313D" roughness={0.55} metalness={0.35} />
@@ -88,14 +126,14 @@ function Entrada({ r, top }: { r: number; top: number }) {
           <planeGeometry args={[240, 60]} />
           <meshStandardMaterial map={toledoTex()} roughness={0.6} />
         </mesh>
-        {/* os roletes — a superfície de pesagem */}
+        {/* os roletes â€” a superfÃ­cie de pesagem */}
         {rolos.map((x, i) => (
           <mesh key={i} position={[x, top - 26, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
             <cylinderGeometry args={[26, 26, 420, 20]} />
             <meshStandardMaterial color="#7E8B98" roughness={0.35} metalness={0.6} />
           </mesh>
         ))}
-        {/* pés */}
+        {/* pÃ©s */}
         {[[-260, -190], [-260, 190], [260, -190], [260, 190]].map(([x, z], i) => (
           <mesh key={i} position={[x, (top - 160) / 2, z]} castShadow>
             <boxGeometry args={[50, top - 160, 50]} />
@@ -110,10 +148,10 @@ function Entrada({ r, top }: { r: number; top: number }) {
   );
 }
 
-/** A seladora de caixas do snapshot (OKB): mesa de roletes cinza sobre pés
- *  com rodízios, correias laterais VERMELHAS que arrastam a caixa, e o
- *  pórtico com o cabeçote de fita em cima. Paramétrica, não malha do CAD —
- *  evoca a máquina sem carregar 26 MB de STEP. */
+/** A seladora de caixas do snapshot (OKB): mesa de roletes cinza sobre pÃ©s
+ *  com rodÃ­zios, correias laterais VERMELHAS que arrastam a caixa, e o
+ *  pÃ³rtico com o cabeÃ§ote de fita em cima. ParamÃ©trica, nÃ£o malha do CAD â€”
+ *  evoca a mÃ¡quina sem carregar 26 MB de STEP. */
 function Seladora({ x, top }: { x: number; top: number }) {
   const CINZA = "#3A4550";
   const FERRO = "#232C35";
@@ -123,7 +161,7 @@ function Seladora({ x, top }: { x: number; top: number }) {
   for (let rx = -650; rx <= 650; rx += 130) rolosSel.push(rx);
 
   return (
-    // x é o CENTRO da mesa — o chamador posiciona a entrada da seladora
+    // x Ã© o CENTRO da mesa â€” o chamador posiciona a entrada da seladora
     // encostada no fim da esteira.
     <group position={[x, 0, 0]}>
       {/* mesa: quadro + roletes */}
@@ -138,7 +176,7 @@ function Seladora({ x, top }: { x: number; top: number }) {
         </mesh>
       ))}
 
-      {/* pés com rodízios */}
+      {/* pÃ©s com rodÃ­zios */}
       {[[-620, -190], [-620, 190], [620, -190], [620, 190]].map(([px, pz], i) => (
         <group key={i} position={[px, 0, pz]}>
           <mesh position={[0, (top - 90) / 2 + 60, 0]} castShadow>
@@ -160,7 +198,7 @@ function Seladora({ x, top }: { x: number; top: number }) {
         </mesh>
       ))}
 
-      {/* pórtico: colunas, travessa e o cabeçote de fita */}
+      {/* pÃ³rtico: colunas, travessa e o cabeÃ§ote de fita */}
       {[-265, 265].map((pz, i) => (
         <mesh key={i} position={[0, top + 480, pz]} castShadow>
           <boxGeometry args={[65, 960, 65]} />
@@ -171,7 +209,7 @@ function Seladora({ x, top }: { x: number; top: number }) {
         <boxGeometry args={[70, 60, 590]} />
         <meshStandardMaterial color={CINZA} roughness={0.55} metalness={0.35} />
       </mesh>
-      {/* o cabeçote, vermelho, pendurado sobre a passagem */}
+      {/* o cabeÃ§ote, vermelho, pendurado sobre a passagem */}
       <mesh position={[0, top + 700, 0]} castShadow>
         <boxGeometry args={[330, 230, 170]} />
         <meshStandardMaterial color={VERMELHO} roughness={0.55} />
@@ -182,7 +220,7 @@ function Seladora({ x, top }: { x: number; top: number }) {
           <meshStandardMaterial color={VERMELHO} roughness={0.5} />
         </mesh>
       ))}
-      {/* o rolo de fita, amarelo, no alto do cabeçote */}
+      {/* o rolo de fita, amarelo, no alto do cabeÃ§ote */}
       <mesh position={[0, top + 855, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
         <cylinderGeometry args={[78, 78, 55, 20]} />
         <meshStandardMaterial color="#D9C36A" roughness={0.5} />
@@ -191,8 +229,8 @@ function Seladora({ x, top }: { x: number; top: number }) {
   );
 }
 
-/** A caixa que chega: anda pela esteira, para nos roletes da balança e some
- *  quando as ventosas a levam. A posição vem do servidor a cada quadro. */
+/** A caixa que chega: anda pela esteira, para nos roletes da balanÃ§a e some
+ *  quando as ventosas a levam. A posiÃ§Ã£o vem do servidor a cada quadro. */
 function CaixaNaEsteira({ live, pick, box }: {
   live: React.MutableRefObject<RobotState | null>;
   pick: { r: number; top: number };
@@ -204,7 +242,7 @@ function CaixaNaEsteira({ live, pick, box }: {
     if (!st) return;
     ref.current.visible = st.feed !== null;
     if (st.feed) {
-      // persegue a posição de rede com amortecimento — anda liso a 60 fps
+      // persegue a posiÃ§Ã£o de rede com amortecimento â€” anda liso a 60 fps
       const k = Math.min(1, dt * 18);
       ref.current.position.x += (st.feed.x - ref.current.position.x) * k;
     }
@@ -242,29 +280,29 @@ export function Cell({ live, layout, placed }: {
         shadow-camera-far={10000}
       />
 
-      {/* chão que recebe sombra + grade de 500 mm */}
+      {/* chÃ£o que recebe sombra + grade de 500 mm */}
       <mesh rotation-x={-Math.PI / 2} receiveShadow>
         <planeGeometry args={[16000, 16000]} />
-        <meshStandardMaterial color="#0D1319" roughness={0.95} />
+        <meshStandardMaterial color="#7C838A" roughness={0.88} />
       </mesh>
       <Grid
         position={[0, 1, 0]}
         args={[16000, 16000]}
         cellSize={250}
-        cellColor="#1A2530"
+        cellColor="#6A7178"
         sectionSize={500}
-        sectionColor="#22303A"
+        sectionColor="#5B6268"
         fadeDistance={13000}
         fadeStrength={2}
       />
 
-      {/* PEDESTAL: sem ele o GP12 não alcança a 2ª camada da fileira distante */}
+      {/* PEDESTAL: sem ele o GP12 nÃ£o alcanÃ§a a 2Âª camada da fileira distante */}
       <mesh position={[0, layout.pedestal / 2, 0]} receiveShadow castShadow>
         <boxGeometry args={[500, layout.pedestal, 500]} />
         <meshStandardMaterial color="#39434E" roughness={0.6} metalness={0.35} />
       </mesh>
 
-      {/* base fixa do robô, sobre o pedestal */}
+      {/* base fixa do robÃ´, sobre o pedestal */}
       <group position={[0, layout.pedestal, 0]}>
         <mesh position={[0, 28, 0]} receiveShadow castShadow>
           <boxGeometry args={[430, 56, 430]} />
@@ -281,16 +319,31 @@ export function Cell({ live, layout, placed }: {
       </group>
 
       <Entrada r={layout.pick.r} top={layout.pick.top} />
-      <Palete z={-layout.pallet.r} size={layout.pallet.size} top={layout.pallet.top} />
-      <Palete z={+layout.pallet.r} size={layout.pallet.size} top={layout.pallet.top} />
+
+      {/* Os batentes ficam SEMPRE: Ã© o endereÃ§o do palete no chÃ£o. */}
+      <Batente z={-layout.pallet.r} size={layout.pallet.size} lado={-1} />
+      <Batente z={+layout.pallet.r} size={layout.pallet.size} lado={+1} />
+
+      {/* Palete sÃ³ existe se o sensor (SP4/SP5) enxerga. Sem palete, nada de
+          desenhar pilha flutuando no ar. */}
+      <Presenca live={live} lado="A">
+        <Palete z={-layout.pallet.r} size={layout.pallet.size} top={layout.pallet.top} />
+      </Presenca>
+      <Presenca live={live} lado="B">
+        <Palete z={+layout.pallet.r} size={layout.pallet.size} top={layout.pallet.top} />
+      </Presenca>
 
       <CaixaNaEsteira live={live} pick={layout.pick} box={layout.box} />
 
-      {/* a pilha: cada caixa depositada, na posição e orientação do padrão */}
+      {/* a pilha: cada caixa depositada, na posiÃ§Ã£o e orientaÃ§Ã£o do padrÃ£o.
+          Cada caixa segue o sensor do SEU lado â€” palete retirado leva a pilha
+          embora, que Ã© o que os olhos veem no chÃ£o de fÃ¡brica. */}
       {placed.map((p, i) => (
-        <group key={i} position={[p.x, p.y, p.z]} rotation-y={rad(p.rot)}>
-          <CaixaVentilador w={layout.box.w} h={layout.box.h} d={layout.box.d} />
-        </group>
+        <Presenca key={i} live={live} lado={p.z < 0 ? "A" : "B"}>
+          <group position={[p.x, p.y, p.z]} rotation-y={rad(p.rot)}>
+            <CaixaVentilador w={layout.box.w} h={layout.box.h} d={layout.box.d} />
+          </group>
+        </Presenca>
       ))}
 
       <group position={[0, layout.pedestal, 0]}>

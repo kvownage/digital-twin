@@ -27,33 +27,23 @@ export function Panel({ robot }: { robot: RobotLink }) {
   return (
     <aside>
       <section className="card">
-        <div className={"state" + (moving ? " on" : "")}>
+        <div className={"state" + (moving ? " on" : "") + (st?.emergencia ? " emerg" : "")}>
           <span className="lamp" />
           <b>
             {!robot.connected
               ? "SEM COMUNICAÇÃO"
-              : trocando
-                ? "TROCA DE PALETES"
-                : moving
-                  ? "EM MOVIMENTO"
-                  : "PARADO"}
+              : st?.emergencia
+                ? "CÉLULA EM EMERGÊNCIA"
+                : trocando
+                  ? "TROCA DE PALETES"
+                  : moving
+                    ? "EM MOVIMENTO"
+                    : "PARADO"}
           </b>
         </div>
-        <div className="readouts">
-          <Ro label="EIXO S" value={st ? fmt(st.j[0], 1) : "—"} unit="°" />
-          <Ro label="EIXO L" value={st ? fmt(st.j[1], 1) : "—"} unit="°" />
-          <Ro label="EIXO U" value={st ? fmt(st.j[2], 1) : "—"} unit="°" />
-          <Ro label="TCP · X" value={st ? fmt(st.tcp.x, 0) : "—"} unit="mm" />
-          <Ro label="TCP · Y" value={st ? fmt(st.tcp.z, 0) : "—"} unit="mm" />
-          <Ro label="ALTURA" value={st ? fmt(st.tcp.y, 0) : "—"} unit="mm" />
-          <div className="ro full">
-            <label>VELOCIDADE DA FERRAMENTA</label>
-            <output>
-              {st ? fmt(st.speed, 0) : "—"}
-              <small>mm/s</small>
-            </output>
-          </div>
-        </div>
+        {/* Sem mostradores de junta, TCP e velocidade: em modo REAL esses
+            números são GERADOS pelo gêmeo, não medidos no robô. Número que
+            ninguém mediu não vai para a tela de quem opera. */}
       </section>
 
       <section className="card">

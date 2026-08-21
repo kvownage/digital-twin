@@ -117,6 +117,14 @@ export class MqttSource extends EventEmitter {
       return;
     }
 
+    // EMERGÊNCIA: o robô para ONDE ESTAVA. Nada de terminar o movimento em
+    // curso, nada de recolher — é o que a célula real faz quando a categoria
+    // de segurança corta a potência.
+    if (p.celula.emergencia) {
+      this.tcpSpeed = 0;
+      return;
+    }
+
     const { countA, countB } = this.contagens(p);
     const boxIndex = Math.max(0, Math.min(TOTAL - 1, countA + countB));
     const wps = route(boxIndex);
@@ -176,6 +184,7 @@ export class MqttSource extends EventEmitter {
         feed: null, peso: 0, running: false, ritmo: 0, turbo: 1,
         fonte: "real", realOk: false, tcp: fkTcp([0, -5, -50]), speed: 0,
         placed: [], boxIndex: 0, boxTotal: TOTAL, descartadas: 0, carryRot: 0,
+        paleteA: false, paleteB: false, emergencia: false, paletesProduzidos: 0,
         countA: 0, countB: 0,
       };
     }
@@ -188,7 +197,8 @@ export class MqttSource extends EventEmitter {
     return {
       j: [...j] as [number, number, number],
       phase: route(boxIndex)[this.wp]?.phase ?? 0,
-      phaseName: p.robo.falha ? "ROBÔ EM FALHA"
+      phaseName: p.celula.emergencia ? "EMERGÊNCIA"
+        : p.robo.falha ? "ROBÔ EM FALHA"
         : !p.celula.automatico ? "MANUAL"
         : PHASES[route(boxIndex)[this.wp]?.phase ?? 0],
       carrying: this.pegouPrev,
@@ -209,6 +219,10 @@ export class MqttSource extends EventEmitter {
       running: p.robo.run && !p.robo.falha,
       ritmo: 100,
       turbo: 1,
+      paleteA: p.celula.palete1,
+      paleteB: p.celula.palete2,
+      emergencia: p.celula.emergencia,
+      paletesProduzidos: p.paletesProduzidos ?? 0,
       fonte: "real",
       realOk: ok,
       tcp: fkTcp(j),

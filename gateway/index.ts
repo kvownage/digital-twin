@@ -33,7 +33,10 @@ const int16 = (v: number) => (v > 0x7fff ? v - 0x10000 : v);
 const bit = (w: number, n: number) => (w & (1 << n)) !== 0;
 
 const modbus = new ModbusRTU();
-const broker = mqtt.connect(MQTT_URL);
+const broker = mqtt.connect(MQTT_URL, {
+  username: process.env.MQTT_USER,
+  password: process.env.MQTT_PASS,
+});
 
 broker.on("connect", () => console.log(`[gateway] broker OK: ${MQTT_URL}`));
 broker.on("error", (e) => console.error(`[gateway] broker: ${e.message}`));

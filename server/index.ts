@@ -145,7 +145,14 @@ http.on("upgrade", (req, socket, head) => {
 
 // ---------------------------------------------------------- as duas fontes --
 const sim = new Gp12Simulator();
-const real = new MqttSource();
+// Nenhuma falha da fonte real pode impedir o servidor de subir.
+let real: MqttSource;
+try {
+  real = new MqttSource();
+} catch (e) {
+  console.error(`[fonte-real] nao inicializou (${(e as Error).message}) — só SIMULADOR`);
+  real = new MqttSource("mqtt://desligado.invalido:1883");
+}
 let fonte: "sim" | "real" = "sim";
 
 function broadcast(state: RobotState) {

@@ -45,7 +45,26 @@ export class MqttSource extends EventEmitter {
     topico = process.env.MQTT_TOPICO ?? "multilaser/paletizadora/r01/estado",
   ) {
     super();
-    const client = mqtt.connect(url, { reconnectPeriod: 3000 });
+
+    // Broker mal configurado NÃO derruba a aplicação: o simulador tem de
+    // continuar servindo. A fonte real simplesmente nasce morta, e a tela
+    // mostra SEM DADOS REAIS — que é a verdade.
+    if (!/^(mqtt|mqtts|ws|wss|tcp|ssl):\/\//.test(url)) {
+      console.error(
+        `[fonte-real] MQTT_URL invalida ("${url}"): falta o protocolo. ` +
+        `Use algo como mqtts://seu-cluster.hivemq.cloud:8883. ` +
+        `A fonte REAL fica indisponivel; o SIMULADOR segue funcionando.`);
+      this.timer = setInterval(() => this.emit("state", this.snapshot()), TICK_MS);
+      return;
+    }
+
+    // Credencial separada da URL: senha com caractere especial (@ : / #) não
+    // sobrevive dentro de uma URL, e não é a senha que deve ceder.
+    const client = mqtt.connect(url, {
+      reconnectPeriod: 3000,
+      username: process.env.MQTT_USER,
+      password: process.env.MQTT_PASS,
+    });
     client.on("connect", () => {
       console.log(`[fonte-real] broker OK: ${url} (tópico ${topico})`);
       client.subscribe(topico);

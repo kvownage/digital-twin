@@ -39,6 +39,8 @@ export class MqttSource extends EventEmitter {
   private carregando = false;       // a caixa está na ventosa?
   private naBalancaPrev = false;    // para detectar a borda de saída
   private qtdPrev = -1;             // para detectar o depósito
+  private vacuoPrev = false;        // o vácuo é NÍVEL: precisa de borda
+  private tCarregando = 0;          // s carregando — rede de segurança
   private tcpPrev: { x: number; y: number; z: number } | null = null;
   private tcpSpeed = 0;
 
@@ -161,21 +163,49 @@ export class MqttSource extends EventEmitter {
     if (this.qtdPrev < 0) {
       this.qtdPrev = qtd;
       this.naBalancaPrev = naBalanca;
+      this.vacuoPrev = vacuo;
     }
 
     const saiuDaBalanca = this.naBalancaPrev && !naBalanca;
-    const depositou = qtd !== this.qtdPrev && qtd > 0;
+    // BORDA, não nível: `vacuoLigado` fica alto durante todo o transporte, e
+    // usá-lo como nível reiniciava o trecho a cada quadro — o braço oscilava
+    // entre SOBE e GIRO sem sair do lugar.
+    const ligouVacuo = vacuo && !this.vacuoPrev;
+    const pegouAgora = saiuDaBalanca || ligouVacuo;
 
-    if ((saiuDaBalanca || vacuo) && !this.carregando) {
+    // QUALQUER mudança do contador encerra o transporte — sem exigir que o
+    // valor novo seja maior. A versão anterior pedia `qtd > 0`, e isso perdia
+    // exatamente o evento da TROCA DE LADO: ao completar o palete 1 o
+    // contador vai de 32 para 0, o depósito não era reconhecido, e o braço
+    // ficava parado no slot do lado 2 sem nunca voltar. Era esse o defeito.
+    // De quebra, cobre o rollback de falha (18 -> 16), que também é evento.
+    const mudouContador = qtd !== this.qtdPrev;
+
+    if (pegouAgora && !this.carregando) {
       this.carregando = true;
+      this.tCarregando = 0;
       this.wp = 2;                    // SOBE, com a caixa
+    } else if (pegouAgora && this.carregando) {
+      // Nova pega com o gêmeo AINDA carregando: a animação ficou atrás da
+      // célula. Fecha o ciclo anterior na hora e começa o novo — melhor um
+      // corte seco do que mostrar duas caixas em trânsito ao mesmo tempo.
+      this.tCarregando = 0;
+      this.wp = 2;
     }
-    if (depositou && this.carregando) {
-      this.carregando = false;
-      this.wp = 6;                    // RECUA, caixa já na pilha
+
+    if (this.carregando) {
+      this.tCarregando += dt;
+      // Rede de segurança: se o contador não confirmar em 25 s, algo se
+      // perdeu (sinal, reconexão, caso não previsto). Solta o braço em vez
+      // de deixá-lo plantado no slot para sempre.
+      if (mudouContador || this.tCarregando > 25) {
+        this.carregando = false;
+        this.wp = 6;                  // RECUA
+      }
     }
     this.naBalancaPrev = naBalanca;
     this.qtdPrev = qtd;
+    this.vacuoPrev = vacuo;
 
     if (this.carregando) {
       // Percorre SOBE -> GIRO -> APROX -> DEPOSITA e espera no destino até
@@ -251,17 +281,26 @@ export class MqttSource extends EventEmitter {
         : !p.celula.automatico ? "MANUAL"
         : PHASES[route(boxIndex)[this.wp]?.phase ?? 0],
       carrying: this.carregando,
-      feed: p.balanca.pecaEmPosicao
-        ? {
-            x: PICK.r,
-            // O veredito da Toledo: 0 aguardando · 1 OK · 2 NOK.
-            status: p.balanca.peso === 2 ? "REPROVADA"
-                  : p.balanca.peso === 1 ? "PRONTA"
-                  : "PESANDO",
-          }
-        : p.celula.caixaNaEsteira
-          ? { x: PICK.r + 700, status: "CHEGANDO" }   // posição estimada
-          : null,
+      // Enquanto o gêmeo carrega, a caixa da balança NÃO é desenhada.
+      //
+      // Na célula real a próxima caixa chega à balança enquanto o robô ainda
+      // transporta a anterior — é verdade, mas a animação do gêmeo fica um
+      // pouco atrás, e o resultado na tela era ver a MESMA caixa em dois
+      // lugares: na garra e na balança. Confunde mais do que informa.
+      // A caixa reaparece na balança quando o braço solta a que está levando.
+      feed: this.carregando
+        ? null
+        : p.balanca.pecaEmPosicao
+          ? {
+              x: PICK.r,
+              // O veredito da Toledo: 0 aguardando · 1 OK · 2 NOK.
+              status: p.balanca.peso === 2 ? "REPROVADA"
+                    : p.balanca.peso === 1 ? "PRONTA"
+                    : "PESANDO",
+            }
+          : p.celula.caixaNaEsteira
+            ? { x: PICK.r + 700, status: "CHEGANDO" }   // posição estimada
+            : null,
       // A balança publica veredito (OK/NOK), não o valor em kg — o peso em
       // número exigiria mais uma holding do lado dela.
       peso: p.balanca.peso === 1 ? 1 : 0,

@@ -165,12 +165,12 @@ const TAB_A1: Passo[] = [
 ];
 
 // PALETE B · camada de BAIXO — correções do operador: o grupo que saía em 2º
-// abre a sequência; o que saía em 1º vem em 2º e com o sentido invertido.
+// abre a sequência; e a ordem entre 2 e 3 foi trocada, como no palete A.
 const TAB_B0: Passo[] = [
   (i) => ({ x: -475 + i * 150, z: 300,            rot: 90 }),   // 1
-  (i) => ({ x: -300,           z: -25 - i * 150,  rot: 0  }),   // 2 (invertido)
-  (i) => ({ x: 300,            z: 475 - i * 150,  rot: 0  }),   // 3 (invertido)
-  (i) => ({ x: 25 + i * 150,   z: -300,           rot: 90 }),   // 4 (era o 3º)
+  (i) => ({ x: 300,            z: 475 - i * 150,  rot: 0  }),   // 2 (invertido)
+  (i) => ({ x: -300,           z: -25 - i * 150,  rot: 0  }),   // 3 (invertido)
+  (i) => ({ x: 25 + i * 150,   z: -300,           rot: 90 }),   // 4
 ];
 
 // PALETE B · camada de CIMA — ordem e sentidos conferidos pelo operador

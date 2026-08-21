@@ -47,6 +47,7 @@ export class MqttSource extends EventEmitter {
   // ---- a caixa vindo pela esteira ----
   private feedX: number | null = null;   // posição no eixo da linha, ou null
   private sensorPrev = false;            // borda do SP3 (esteira de entrada)
+  private tEsperaBalanca = 0;            // s esperando a balança confirmar
   // ---- os paletes indo embora na empilhadeira ----
   private pal = {
     A: { pres: null as boolean | null, saida: 1, cheio: false, usado: false },
@@ -262,23 +263,42 @@ export class MqttSource extends EventEmitter {
     //  Se a balança confirmar antes de a animação terminar (esteira mais
     //  rápida do que o estimado), a caixa é encaixada nos roletes na hora:
     //  o sinal manda, a animação obedece.
+    //
+    //  E — o ponto que faltava — a viagem é uma PREVISÃO, não um fato. O SP3
+    //  diz que algo passou pela entrada; quem diz que há caixa NOS ROLETES é
+    //  a balança, e só ela. Sem prazo de validade, uma previsão que não se
+    //  confirmasse (SP3 disparando sem caixa chegar, caixa parando antes)
+    //  deixava uma caixa PARADA na balança para sempre, sem nada real
+    //  embaixo. Ao chegar, a previsão tem 1,5 s para a balança confirmar;
+    //  passado isso, ela se desfaz. Em trânsito a animação manda; nos
+    //  roletes, o sensor.
     // =======================================================================
     const sensor = p.celula.caixaNaEsteira;
     if (sensor && !this.sensorPrev && this.feedX === null && !this.carregando) {
       this.feedX = FEED.sealExit;          // boca da esteira
+      this.tEsperaBalanca = 0;
     }
     if (this.feedX !== null) {
       if (naBalanca) {
         this.feedX = PICK.r;               // a balança confirma: chegou
+        this.tEsperaBalanca = 0;
       } else if (this.feedX > PICK.r) {
         this.feedX = Math.max(PICK.r, this.feedX - FEED.vel * dt);
+      } else {
+        // Chegou aos roletes e a balança não confirma: dá um instante para o
+        // sensor assentar e, se nada vier, admite que não havia caixa.
+        this.tEsperaBalanca += dt;
+        if (this.tEsperaBalanca > 1.5) this.feedX = null;
       }
     }
     // Saiu da balança (o robô pegou) ou está na garra: não há caixa na linha.
     if (this.carregando || saiuDaBalanca) this.feedX = null;
     // Balança ocupada sem a animação ter começado (o gêmeo entrou no meio do
     // ciclo): mostra a caixa já nos roletes, sem inventar viagem.
-    if (this.feedX === null && naBalanca && !this.carregando) this.feedX = PICK.r;
+    if (this.feedX === null && naBalanca && !this.carregando) {
+      this.feedX = PICK.r;
+      this.tEsperaBalanca = 0;
+    }
     this.sensorPrev = sensor;
 
     this.naBalancaPrev = naBalanca;

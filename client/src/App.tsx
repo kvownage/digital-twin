@@ -37,18 +37,9 @@ export function App() {
         <Panel robot={robot} />
       </div>
 
-      <footer>
-        Paletização de ventiladores de mesa 40 cm em CATAVENTO, a sequência
-        desenhada pelo operador: 4 fileiras de 4 lombadas por camada
-        (1→2→3→4), camada de cima girada 90° — <b>32 por palete</b>, e o robô
-        monta um palete inteiro antes de começar o outro. O GP12 fica num
-        <code> pedestal de 800 mm</code>: o slot mais distante do catavento
-        exige ~1410 mm de raio, fora do alcance no chão. Cada posição vira
-        ângulos de junta por <code>cinemática inversa</code> no
-        <code> servidor Node</code>; PTP sincronizado com as velocidades reais
-        de junta. Para o robô real, trocar <code>Gp12Simulator</code> por
-        <code> YaskawaHses</code>.
-      </footer>
+      {/* Sem rodapé explicativo: era nota de desenvolvimento, não informação
+          de operação. Quem abre esta tela quer ver a célula, não ler sobre
+          ela — o "como funciona" mora no README e nos comentários do código. */}
     </div>
   );
 }

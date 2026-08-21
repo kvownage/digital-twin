@@ -7,6 +7,25 @@ import type { RobotLink } from "../lib/useRobot";
 const fmt = (n: number, d: number) =>
   n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 
+/** Um sinal de status: rótulo + estado.
+ *
+ *  A cor NÃO é decoração — só aparece quando o sinal exige atenção. Tela em
+ *  que tudo é colorido não tem destaque nenhum; quem olha de longe precisa
+ *  que só o problema salte. */
+function Sinal({ rotulo, valor, alerta }: {
+  rotulo: string;
+  valor: string;
+  /** "ruim" pinta vermelho, "atencao" âmbar, undefined fica neutro. */
+  alerta?: "ruim" | "atencao";
+}) {
+  return (
+    <div className={"sinal" + (alerta ? ` ${alerta}` : "")}>
+      <span className="sinal-rot">{rotulo}</span>
+      <span className="sinal-val">{valor}</span>
+    </div>
+  );
+}
+
 function Ro({ label, value, unit }: { label: string; value: string; unit: string }) {
   return (
     <div className="ro">
@@ -45,6 +64,108 @@ export function Panel({ robot }: { robot: RobotLink }) {
             números são GERADOS pelo gêmeo, não medidos no robô. Número que
             ninguém mediu não vai para a tela de quem opera. */}
       </section>
+
+      {/* ============ ROBÔ: está em condição de produzir? ============ */}
+      {st && (
+        <section className="card">
+          <div className="card-title">ROBÔ</div>
+          <div className="sinais">
+            <Sinal
+              rotulo="COMANDO"
+              valor={st.status.remoto ? "REMOTO" : "LOCAL"}
+              alerta={st.status.remoto ? undefined : "atencao"}
+            />
+            <Sinal
+              rotulo="SERVO"
+              valor={st.status.servoOn ? "LIGADO" : "DESLIGADO"}
+              alerta={st.status.servoOn ? undefined : "atencao"}
+            />
+            <Sinal
+              rotulo="CICLO"
+              valor={st.status.emCiclo ? "EM CICLO" : "PARADO"}
+            />
+            <Sinal
+              rotulo="POSIÇÃO"
+              valor={st.status.emHome ? "EM HOME" : "FORA DE HOME"}
+            />
+            <Sinal
+              rotulo="FALHA"
+              valor={st.status.falha ? `SIM · ${st.status.almRobo}` : "NÃO"}
+              alerta={st.status.falha ? "ruim" : undefined}
+            />
+            <Sinal
+              rotulo="LADO ATIVO"
+              valor={st.status.ladoAtivo === 0 ? "—" : `PALETE ${st.status.ladoAtivo === 1 ? "A" : "B"}`}
+            />
+          </div>
+        </section>
+      )}
+
+      {/* ============ SEGURANÇA: por que não dá para religar? ============ */}
+      {st && (
+        <section className="card">
+          <div className="card-title">SEGURANÇA</div>
+          <div className="sinais">
+            <Sinal
+              rotulo="EMERGÊNCIA"
+              valor={st.emergencia ? "ATIVA" : "LIVRE"}
+              alerta={st.emergencia ? "ruim" : undefined}
+            />
+            <Sinal
+              rotulo="MODO"
+              valor={st.status.automatico ? "AUTOMÁTICO" : "MANUAL"}
+              alerta={st.status.automatico ? undefined : "atencao"}
+            />
+            <Sinal
+              rotulo="PORTAS"
+              valor={st.status.portas ? "FECHADAS" : "ABERTA"}
+              alerta={st.status.portas ? undefined : "ruim"}
+            />
+            <Sinal
+              rotulo="BARREIRAS"
+              valor={st.status.barreiras ? "LIVRES" : "INTERROMPIDA"}
+              alerta={st.status.barreiras ? undefined : "ruim"}
+            />
+          </div>
+        </section>
+      )}
+
+      {/* ============ GARRA E AR: a causa nº 1 de parada ============ */}
+      {st && (
+        <section className="card">
+          <div className="card-title">GARRA E AR</div>
+          <div className="sinais">
+            <Sinal
+              rotulo="VÁCUO"
+              // Ligado SEM OK = caixa caiu ou vazamento. É o diagnóstico que
+              // um bit só de "vácuo" nunca daria.
+              valor={
+                !st.status.vacuoLigado ? "DESLIGADO"
+                  : st.status.vacuoOk ? "OK" : "SEM VÁCUO"
+              }
+              alerta={st.status.vacuoLigado && !st.status.vacuoOk ? "ruim" : undefined}
+            />
+            <Sinal
+              rotulo="PRESSÃO DE AR"
+              valor={`${fmt(st.status.pressaoBar, 2)} bar`}
+              alerta={
+                st.status.pressaoBar < 4.5 ? "ruim"
+                  : st.status.pressaoBar < 5.5 ? "atencao" : undefined
+              }
+            />
+            <Sinal
+              rotulo="BALANÇA"
+              valor={st.status.almBalanca === 0 ? "OK" : `ALARME ${st.status.almBalanca}`}
+              alerta={st.status.almBalanca === 0 ? undefined : "ruim"}
+            />
+            <Sinal
+              rotulo="SELADORA"
+              valor={st.status.seladoraDesabilitada ? "DESABILITADA" : "ATIVA"}
+              alerta={st.status.seladoraDesabilitada ? "atencao" : undefined}
+            />
+          </div>
+        </section>
+      )}
 
       <section className="card">
         <div className="card-title">PALETIZAÇÃO</div>

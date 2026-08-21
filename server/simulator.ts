@@ -525,7 +525,14 @@ export class Gp12Simulator extends EventEmitter {
       ritmo: this.ritmo,
       turbo: this.turbo,
       // No simulador os dois paletes estao sempre presentes, menos na troca.
-      emergencia: false,      // o simulador nao gera emergencia
+      status: {
+        remoto: true, servoOn: true, emCiclo: this.running, emHome: false,
+        falha: false, almRobo: 0, automatico: true, portas: true,
+        barreiras: true, descargaCheia: this.trocando,
+        vacuoLigado: this.carrying, vacuoOk: this.carrying, pressaoBar: 6.2,
+        ladoAtivo: this.placed.length < PER_PALLET ? 1 : 2,
+        almBalanca: 0, seladoraDesabilitada: false,
+      },      emergencia: false,      // o simulador nao gera emergencia
       paletesProduzidos: 0,
       paleteA: !this.trocando,
       paleteB: !this.trocando,

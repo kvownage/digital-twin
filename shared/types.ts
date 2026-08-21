@@ -34,6 +34,34 @@ export interface RobotState {
   emergencia: boolean;
   /** Paletes completos produzidos (contador do CLP). */
   paletesProduzidos: number;
+
+  /** Status para a tela. Cada campo aqui existe para responder a UMA
+   *  pergunta do operador ou da manutenção — nada de despejar sinal cru. */
+  status: {
+    // ---- o robô está em condição de produzir? ----
+    remoto: boolean;        // REMOTO = o CLP comanda; LOCAL = alguém no pendant
+    servoOn: boolean;
+    emCiclo: boolean;       // master job rodando
+    emHome: boolean;
+    falha: boolean;
+    almRobo: number;        // código do alarme: é o que a manutenção precisa
+
+    // ---- se está parado, o que impede? ----
+    automatico: boolean;    // modo da CÉLULA (diferente do remoto do robô)
+    portas: boolean;        // as duas chaves de segurança fechadas
+    barreiras: boolean;     // as duas barreiras livres
+    descargaCheia: boolean; // palete cheio esperando empilhadeira
+
+    // ---- a ferramenta e o ar: a causa nº 1 de parada em célula de ventosa ----
+    vacuoLigado: boolean;
+    vacuoOk: boolean;       // ligado SEM ok = caixa caiu ou vazamento
+    pressaoBar: number;
+
+    // ---- a linha em volta ----
+    ladoAtivo: 1 | 2 | 0;
+    almBalanca: number;
+    seladoraDesabilitada: boolean;
+  };
   /** De onde os dados vêm agora. */
   fonte: "sim" | "real";
   /** Em modo real: o broker está entregando dados frescos? */

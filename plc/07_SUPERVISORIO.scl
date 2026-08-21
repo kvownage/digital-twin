@@ -1,100 +1,134 @@
 // ============================================================================
-//  FC "07 - SUPERVISORIO"
+//  FC "07 - SUPERVISORIO"   —   VERSÃO FINAL
 //
-//  Publica o estado da célula nas HOLDINGS livres do Modbus que JÁ EXISTE
-//  no projeto (DB 37 "MODBUS HOLDINGS", Array[0..99] of Word, servido pelo
+//  Publica o estado da célula nas HOLDINGS livres do Modbus que JÁ EXISTE no
+//  projeto (DB 37 "MODBUS HOLDINGS", Array[0..99] of Word, servido pelo
 //  MB_SERVER do FC "06 - MODBUS CONN", porta 502).
+//
+//  ESTE BLOCO FOI FEITO PARA SER CARREGADO UMA VEZ E NÃO PRECISAR VOLTAR.
+//  Ele exporta TUDO que a célula tem de útil para supervisão — inclusive o
+//  que o supervisório ainda não usa. Word sobrando no Modbus é de graça;
+//  outra intervenção no CLP, não.
 //
 //  NÃO TOCA em HOLDINGS[0..3]: são da integração com a balança
 //    [0] PEÇA EM POSIÇÃO   [1] PESO (0=aguardando, 1=OK, 2=NOK)
 //    [2] LIFE BIT BALANÇA  [3] LIFE BIT CLP
-//  HOLDINGS[4..9] ficam de folga proposital, para a balança crescer sem
-//  esbarrar no supervisório.
+//  HOLDINGS[4..9] ficam de folga proposital, para a balança crescer.
 //
-//  Este bloco é SOMENTE LEITURA do processo: ele lê tags e escreve no DB de
-//  Modbus. Não comanda nada. O supervisório observa, não move.
+//  SOMENTE LEITURA do processo: lê tags e escreve no DB de Modbus. Não
+//  comanda nada. O supervisório observa, não move.
+//
+//  ---------------------------------------------------------------- MAPA -----
+//   HR10  bits   robô: estado operacional
+//   HR11  bits   célula e segurança
+//   HR12  Int    passo INICIALIZACAO ROBO
+//   HR13  Int    passo PALETIZACAO LADO 1
+//   HR14  Int    passo PALETIZACAO LADO 2
+//   HR15  Int    quantidade do LADO ATIVO (serve aos dois paletes)
+//   HR16  Int    PLACE (posição na sequência do mosaico)
+//   HR17  Int    camada (retorno do robô)
+//   HR18  Int    altura da caixa
+//   HR19  Int    altura do pallet
+//   HR20  Int    shift Y
+//   HR21  Int    shift Z
+//   HR22  Int    camada (comando)
+//   HR23  Int    alarme do robô
+//   HR24  Int    alarme da balança
+//   HR25  Int    pressão de ar em CENTÉSIMOS de bar (625 = 6,25 bar)
+//   HR26  Int    HEARTBEAT (+1 por ciclo — prova que o programa roda)
+//   HR27  Int    paletes produzidos
+//   HR28  bits   CAUSAS da emergência (qual botão/porta/barreira)
+//   HR29  bits   MOSAICO ativo (1..7) e variante de produto
+//   HR30  bits   torre de sinalização, vácuos e condições
+//   HR31  Int    STATUS ROBO
+//   HR32  Int    STATUS LADO 01
+//   HR33  Int    STATUS LADO 02
+//   HR34  Int    AUTO/MANUAL (modo da célula)
+//   HR35..99    LIVRES para o futuro
 //
 //  COMO USAR NO TIA PORTAL
-//   1. Program blocks > Add new block > Function > nome "07 - SUPERVISORIO",
-//      linguagem SCL.  (Ou: Add new external file > este .scl > gerar bloco.)
-//   2. Colar este corpo.
-//   3. Chamar no fim do Main [OB1], depois de "06 - MODBUS CONN".
-//   4. Compilar e carregar.
+//   1. Program blocks > Add new external file > este .scl
+//   2. Clique direito no arquivo > Generate blocks from source
+//   3. Chamar no fim do Main [OB1], depois de "06 - MODBUS CONN"
+//   4. Compilar e carregar (pode ser em RUN: nenhum DB muda de estrutura)
+//
+//  ATENÇÃO À GRAFIA dos membros do DB "COMANDOS" — o projeto mistura acentos
+//  de propósito ou por descuido, e o compilador é literal:
+//    "TRAM1 - TORRE SINALIZAÇÃO AMARELO"   (com Ç e Ã)
+//    "TRVM1 - TORRE SINALIZACAO VERMELHO"  (sem acento)
+//    "PALETIZACAO LAD. 01"  /  "PALETIZAÇAO LAD. 02"   (um com Ç, outro não)
+//  Se o TIA reclamar de nome, é aqui. Confira no DB antes de mudar.
 // ============================================================================
 
 FUNCTION "07 - SUPERVISORIO" : Void
 { S7_Optimized_Access := 'TRUE' }
-VERSION : 0.1
+VERSION : 0.2
 
 VAR_TEMP
-   wSt1 : Word;   // palavra de estado 1 — robô
-   wSt2 : Word;   // palavra de estado 2 — célula e segurança
+   wRobo   : Word;   // HR10 — robô
+   wCelula : Word;   // HR11 — célula e segurança
+   wEmerg  : Word;   // HR28 — causas da emergência
+   wMosaic : Word;   // HR29 — mosaico e variante
+   wTorre  : Word;   // HR30 — torre, vácuos, condições
 END_VAR
 
 BEGIN
 
    // =========================================================================
-   //  HR 10 — estado do ROBÔ, bit a bit
+   //  HR10 — ROBÔ: está em condição de produzir?
    // =========================================================================
-   #wSt1 := 0;
-   #wSt1.%X0  := "ROBO - EM RUN";
-   #wSt1.%X1  := "ROBO - SERVO ON";
-   #wSt1.%X2  := "ROBO - EM MASTER JOB";
-   #wSt1.%X3  := "ROBO - EM FALHA";
-   #wSt1.%X4  := "ROBO - EM REMOTO";
-   #wSt1.%X5  := "ROBO - EM HOME";
-   #wSt1.%X6  := "ROBO - FORA DE HOME";
-   #wSt1.%X7  := "ROBO - PEGA OK";
-   #wSt1.%X8  := "ROBO - LADO 1 ATIVO";
-   #wSt1.%X9  := "ROBO - LADO 2 ATIVO";
-   #wSt1.%X10 := "ROBO - CAIXA EM INDEXADOR";
-   #wSt1.%X11 := "ROBO - LIGA VACUO GARRA";
-   #wSt1.%X12 := "VC1 - VACUO OK GARRA";
-   #wSt1.%X13 := "ROBO - DESCARGA CHEIA";
-   #wSt1.%X14 := "ROBO - FIM ENCAIXOTAMENTO LAD 1";
-   #wSt1.%X15 := "ROBO - FIM ENCAIXOTAMENTO LAD 2";
-   "MODBUS HOLDINGS".HOLDINGS[10] := #wSt1;
+   #wRobo := 0;
+   #wRobo.%X0  := "ROBO - EM RUN";
+   #wRobo.%X1  := "ROBO - SERVO ON";
+   #wRobo.%X2  := "ROBO - EM MASTER JOB";
+   #wRobo.%X3  := "ROBO - EM FALHA";
+   #wRobo.%X4  := "ROBO - EM REMOTO";          // FALSE = alguém no pendant
+   #wRobo.%X5  := "ROBO - EM HOME";
+   #wRobo.%X6  := "ROBO - FORA DE HOME";
+   #wRobo.%X7  := "ROBO - PEGA OK";
+   #wRobo.%X8  := "ROBO - LADO 1 ATIVO";
+   #wRobo.%X9  := "ROBO - LADO 2 ATIVO";
+   #wRobo.%X10 := "ROBO - CAIXA EM INDEXADOR";
+   #wRobo.%X11 := "ROBO - LIGA VACUO GARRA";
+   #wRobo.%X12 := "VC1 - VACUO OK GARRA";
+   #wRobo.%X13 := "ROBO - DESCARGA CHEIA";
+   #wRobo.%X14 := "ROBO - FIM ENCAIXOTAMENTO LAD 1";
+   #wRobo.%X15 := "ROBO - FIM ENCAIXOTAMENTO LAD 2";
+   "MODBUS HOLDINGS".HOLDINGS[10] := #wRobo;
 
    // =========================================================================
-   //  HR 11 — estado da CÉLULA e da SEGURANÇA
+   //  HR11 — CÉLULA e SEGURANÇA: se está parado, o que impede?
    // =========================================================================
-   #wSt2 := 0;
-   #wSt2.%X0  := "SP3 - ESTEIRA DE ENTRADA";
-   #wSt2.%X1  := "SFC2 - INDEXADOR CAIXA AVANCADO";
-   #wSt2.%X2  := "SP1 - SENSOR PECA ROBO";
-   // PRESENÇA DE PALETE: valem SP4 e SP5. Os SP1/SP2 do mesmo nome NÃO são
-   // presença de palete de verdade (confirmado pelo autor da célula) e ficam
-   // de fora de propósito. Bits 5 e 6 reservados.
-   #wSt2.%X3  := "SP4 - PALETE LADO 01";
-   #wSt2.%X4  := "SP5 - PALETE LADO 02";
-   // EMERGÊNCIA consolidada do DB "COMANDOS" (bit 5) e a causa por botão
-   // (bit 6). É o que faz o gêmeo congelar o braço onde estava.
-   #wSt2.%X5  := "COMANDOS"."EMERGENCIA";
-   #wSt2.%X6  := "COMANDOS"."EMERGENCIA BOTOES";
-   #wSt2.%X7  := "ESTEIRA ENTRADA";
-   #wSt2.%X8  := "ESTEIRA SAIDA";
-   #wSt2.%X9  := "DESABILITA SELADORA";
-   #wSt2.%X10 := "BHA1 - BOTAO HABILITA AUTOMATICO";
-   #wSt2.%X11 := "CHAVE SEGURANCA PORTA 01";
-   #wSt2.%X12 := "CHAVE SEGURANCA PORTA 02";
-   #wSt2.%X13 := "BARREIRA SEGURANCA 01";
-   #wSt2.%X14 := "BARREIRA SEGURANCA 02";
-   #wSt2.%X15 := "TRVM1 - TORRE SINALIZACAO VERMELHO";
-   "MODBUS HOLDINGS".HOLDINGS[11] := #wSt2;
+   #wCelula := 0;
+   #wCelula.%X0  := "SP3 - ESTEIRA DE ENTRADA";
+   #wCelula.%X1  := "SFC2 - INDEXADOR CAIXA AVANCADO";
+   #wCelula.%X2  := "SP1 - SENSOR PECA ROBO";
+   // PRESENÇA DE PALETE: valem SP4 e SP5. Os SP1/SP2 de nome parecido NÃO são
+   // presença de palete de verdade (confirmado pelo autor da célula).
+   #wCelula.%X3  := "SP4 - PALETE LADO 01";
+   #wCelula.%X4  := "SP5 - PALETE LADO 02";
+   #wCelula.%X5  := "COMANDOS"."EMERGENCIA";        // consolidada
+   #wCelula.%X6  := "COMANDOS"."EMERGENCIA BOTOES";
+   #wCelula.%X7  := "ESTEIRA ENTRADA";
+   #wCelula.%X8  := "ESTEIRA SAIDA";
+   #wCelula.%X9  := "DESABILITA SELADORA";
+   #wCelula.%X10 := "BHA1 - BOTAO HABILITA AUTOMATICO";
+   #wCelula.%X11 := "CHAVE SEGURANCA PORTA 01";
+   #wCelula.%X12 := "CHAVE SEGURANCA PORTA 02";
+   #wCelula.%X13 := "BARREIRA SEGURANCA 01";
+   #wCelula.%X14 := "BARREIRA SEGURANCA 02";
+   #wCelula.%X15 := "TRVM1 - TORRE SINALIZACAO VERMELHO";
+   "MODBUS HOLDINGS".HOLDINGS[11] := #wCelula;
 
    // =========================================================================
-   //  HR 12..14 — passos das sequências (DB "ESTADOS")
-   //
-   //  ATENÇÃO à grafia dos membros: o lado 01 é "PALETIZACAO" (sem cedilha) e
-   //  o lado 02 é "PALETIZAÇAO" (com cedilha). É assim no projeto; se o TIA
-   //  reclamar, confira o nome no DB 14 antes de mudar aqui.
+   //  HR12..14 — passos das sequências (DB "ESTADOS")
    // =========================================================================
    "MODBUS HOLDINGS".HOLDINGS[12] := INT_TO_WORD("ESTADOS"."INICIALIZACAO ROBO");
    "MODBUS HOLDINGS".HOLDINGS[13] := INT_TO_WORD("ESTADOS"."PALETIZACAO LAD. 01");
    "MODBUS HOLDINGS".HOLDINGS[14] := INT_TO_WORD("ESTADOS"."PALETIZAÇAO LAD. 02");
 
    // =========================================================================
-   //  HR 15..22 — números do processo, vindos do robô
+   //  HR15..22 — números do processo, vindos do robô
    // =========================================================================
    // Contagem do lado ATIVO. Apesar do nome, esta memória serve aos DOIS
    // paletes: a célula termina um e começa o outro, e quem diz de quem é a
@@ -107,20 +141,18 @@ BEGIN
    "MODBUS HOLDINGS".HOLDINGS[20] := INT_TO_WORD("ROBO - RETORNO SHIFT Y");
    "MODBUS HOLDINGS".HOLDINGS[21] := INT_TO_WORD("ROBO - RETORNO SHIFT Z");
    "MODBUS HOLDINGS".HOLDINGS[22] := INT_TO_WORD("ROBO - CAMADA");
-   "MODBUS HOLDINGS".HOLDINGS[27] := INT_TO_WORD("COMANDOS"."PALETES PRODUZIDOS");
 
    // =========================================================================
-   //  HR 23..25 — alarmes e pressão
+   //  HR23..25 — alarmes e pressão
    // =========================================================================
    "MODBUS HOLDINGS".HOLDINGS[23] := INT_TO_WORD("ALARMES"."ROBO EM FALHA");
    "MODBUS HOLDINGS".HOLDINGS[24] := INT_TO_WORD("ALARMES"."BALANCA");
-
    // Pressão em centésimos de bar: 6,25 bar -> 625. Inteiro atravessa Modbus
    // sem depender de ordem de palavra de ponto flutuante.
    "MODBUS HOLDINGS".HOLDINGS[25] := INT_TO_WORD(REAL_TO_INT("PRESSAO AR" * 100.0));
 
    // =========================================================================
-   //  HR 26 — HEARTBEAT do supervisório
+   //  HR26 — HEARTBEAT
    //
    //  Incrementa todo ciclo. É o que prova que o PROGRAMA está rodando —
    //  Modbus responde igual com o CLP em STOP, e o gateway usa este número
@@ -129,5 +161,99 @@ BEGIN
    // =========================================================================
    "MODBUS HOLDINGS".HOLDINGS[26] :=
       INT_TO_WORD(WORD_TO_INT("MODBUS HOLDINGS".HOLDINGS[26]) + 1);
+
+   // =========================================================================
+   //  HR27 — produção
+   // =========================================================================
+   "MODBUS HOLDINGS".HOLDINGS[27] := INT_TO_WORD("COMANDOS"."PALETES PRODUZIDOS");
+
+   // =========================================================================
+   //  HR28 — CAUSAS da emergência
+   //
+   //  A HR11 diz QUE há emergência; esta diz POR QUÊ. É a diferença entre o
+   //  operador correr até o painel e ir direto na porta que ficou aberta.
+   // =========================================================================
+   #wEmerg := 0;
+   #wEmerg.%X0  := "COMANDOS"."EMERGENCIA BOTOES";
+   #wEmerg.%X1  := "COMANDOS"."EMERGENCIA CS_01";               // chave seg. 1
+   #wEmerg.%X2  := "COMANDOS"."EMERGENCIA CS_02";               // chave seg. 2
+   #wEmerg.%X3  := "COMANDOS"."EMERGENCIA BS_01";               // barreira 1
+   #wEmerg.%X4  := "COMANDOS"."EMERGENCIA BS_02";               // barreira 2
+   #wEmerg.%X5  := "COMANDOS"."EMERGENCIA BOTAO LADO 01";
+   #wEmerg.%X6  := "COMANDOS"."EMERGENCIA BOTAO LADO 02";
+   #wEmerg.%X7  := "COMANDOS"."EMERGENCIA CHAVE SEGURANCA LADO 01";
+   #wEmerg.%X8  := "COMANDOS"."EMERGENCIA CHAVE SEGURANCA LADO 02";
+   #wEmerg.%X9  := "COMANDOS"."RESET SEGURANCA";
+   #wEmerg.%X10 := "BOTAO EMERGENCIA PAINEL - ROBO";
+   #wEmerg.%X11 := "BOTAO EMERGENCIA PORTA 01";
+   #wEmerg.%X12 := "BOTAO EMERGENCIA PORTA 02";
+   #wEmerg.%X13 := "ROBO - BT EMERGENCIA";                      // cogumelo do robô
+   #wEmerg.%X14 := FALSE;
+   #wEmerg.%X15 := FALSE;
+   "MODBUS HOLDINGS".HOLDINGS[28] := #wEmerg;
+
+   // =========================================================================
+   //  HR29 — MOSAICO ativo e variante de produto
+   //
+   //  A célula tem SETE padrões de paletização. Sem saber qual está ativo, o
+   //  gêmeo desenha a pilha com o padrão errado quando o produto muda — a
+   //  contagem certa e as posições erradas. Esta word resolve isso de vez.
+   // =========================================================================
+   #wMosaic := 0;
+   #wMosaic.%X0  := "ROBO - PALETIZAR MOSAICO 1";
+   #wMosaic.%X1  := "ROBO - PALETIZAR MOSAICO 2";
+   #wMosaic.%X2  := "ROBO - PALETIZAR MOSAICO 3";
+   #wMosaic.%X3  := "ROBO - PALETIZAR MOSAICO 4";
+   #wMosaic.%X4  := "ROBO - PALETIZAR MOSAICO 5";
+   #wMosaic.%X5  := "ROBO - PALETIZAR MOSAICO 6";
+   #wMosaic.%X6  := "ROBO - PALETIZAR MOSAICO 7";
+   #wMosaic.%X7  := "ROBO - IS SMALL BOX";        // variante de produto
+   #wMosaic.%X8  := "ROBO - ARMAR CX MOSAICO 4";
+   #wMosaic.%X9  := "ROBO - ENCAIXOTAR MOSAICO 3";
+   #wMosaic.%X10 := "ROBO - ENCAIXOTAR MOSAICO 4";
+   #wMosaic.%X11 := "ROBO - ENCAIXOTAR MOSAICO 5";
+   #wMosaic.%X12 := "ROBO - ENCAIXOTAR MOSAICO 6";
+   #wMosaic.%X13 := "ROBO - ENCAIXOTAR MOSAICO 7";
+   #wMosaic.%X14 := "ROBO - ENCAIXOTAR";
+   #wMosaic.%X15 := FALSE;
+   "MODBUS HOLDINGS".HOLDINGS[29] := #wMosaic;
+
+   // =========================================================================
+   //  HR30 — torre de sinalização, VÁCUOS e condições
+   //
+   //  Os três sensores de vácuo separados: a garra tem VC1, VC2 e VC3, e o
+   //  padrão de quais caíram diz se foi caixa torta, ventosa entupida ou
+   //  falta de ar. Um bit só de "vácuo OK" perde esse diagnóstico.
+   // =========================================================================
+   #wTorre := 0;
+   #wTorre.%X0  := "TRVM1 - TORRE SINALIZACAO VERMELHO";
+   #wTorre.%X1  := "TRAM1 - TORRE SINALIZACAO AMARELO";
+   #wTorre.%X2  := "TRVD1 - TORRE SINALIZACAO VERDE";
+   #wTorre.%X3  := "TRBZ1 - TORRE SINALIZACAO BUZZER";
+   #wTorre.%X4  := "VC1 - VACUO OK GARRA";
+   #wTorre.%X5  := "VC2 - VACUO OK GARRA";
+   #wTorre.%X6  := "VC3 - VACUO OK GARRA";
+   #wTorre.%X7  := "COMANDOS"."CONDICAO CICLO ROBO";
+   #wTorre.%X8  := "COMANDOS"."LADO 01 CONDICAO";
+   #wTorre.%X9  := "COMANDOS"."LADO 02 CONDICAO";
+   #wTorre.%X10 := "COMANDOS"."DESABILITA POR INATIVIDADE";
+   #wTorre.%X11 := "ROBO - TROCAR GARRA";
+   #wTorre.%X12 := "ROBO - POSICAO TROCA GARRA";
+   #wTorre.%X13 := "ROBO - REJEITAR MASTER";
+   #wTorre.%X14 := "ROBO - DEVOLVER MASTER";
+   #wTorre.%X15 := "COMANDOS"."LIGA/DESLIGA";
+   "MODBUS HOLDINGS".HOLDINGS[30] := #wTorre;
+
+   // =========================================================================
+   //  HR31..34 — status numéricos do DB "COMANDOS"
+   //
+   //  São as máquinas de estado que a IHM já usa. Publicadas aqui em bruto:
+   //  o supervisório traduz os códigos do lado dele, e novos códigos no CLP
+   //  não exigem mexer no CLP outra vez.
+   // =========================================================================
+   "MODBUS HOLDINGS".HOLDINGS[31] := INT_TO_WORD("COMANDOS"."STATUS ROBO");
+   "MODBUS HOLDINGS".HOLDINGS[32] := INT_TO_WORD("COMANDOS"."STATUS LADO 01");
+   "MODBUS HOLDINGS".HOLDINGS[33] := INT_TO_WORD("COMANDOS"."STATUS LADO 02");
+   "MODBUS HOLDINGS".HOLDINGS[34] := INT_TO_WORD("COMANDOS"."AUTO/MANUAL");
 
 END_FUNCTION

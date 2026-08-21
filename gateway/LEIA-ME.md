@@ -10,21 +10,21 @@ cliente — é um pacote autônomo de ~25 MB.
 
 ## O que copiar para o outro PC
 
-Copie **duas pastas**, preservando a estrutura (o gateway importa o contrato
-de `shared/`, que é a única fonte de verdade das mensagens):
+**Só esta pasta `gateway`.** Copie ela inteira (pendrive, rede, o que for) —
+e nada mais.
 
-```
-<qualquer-pasta>/
-├── gateway/          ← todos os arquivos desta pasta
-└── shared/
-    └── types.ts
-```
-
-Da pasta `gateway/` bastam: `index.ts`, `testa-modbus.ts`, `package.json`,
-`.env.example` e este `LEIA-ME.md`. O `clp-falso.ts` é opcional (só serve
-para testar sem o CLP).
+Bastam três arquivos para funcionar: `index.ts`, `testa-modbus.ts` e
+`package.json`. Os outros ajudam: `.env.example` (modelo de configuração),
+este `LEIA-ME.md` e `clp-falso.ts` (opcional — publica sinais falsos, para
+testar sem o CLP).
 
 **NÃO copie** `node_modules` — ele se instala no destino.
+
+> Detalhe técnico: o código importa o contrato das mensagens de
+> `../shared/types.ts`, mas é `import type` — só existe em tempo de
+> compilação e desaparece no código que roda. Testado: o gateway sobe e
+> funciona sem aquela pasta. Ela continua sendo a única fonte de verdade do
+> contrato **no repositório**, e é lá que se edita.
 
 ## Pré-requisito
 
@@ -51,15 +51,18 @@ copy .env.example .env
 notepad .env
 ```
 
-Preencha:
+Só **duas linhas** precisam da sua mão — o resto já vem pronto:
 
 ```env
-PLC_IP=192.168.x.x                # IP do S7 na rede
-PLC_PORT=502
-PLC_UNIT=1
-MQTT_URL=mqtts://SEU-CLUSTER.s1.eu.hivemq.cloud:8883
+PLC_IP=192.168.x.x        ← o IP do S7 na rede
+MQTT_PASS=                ← a senha do broker
+```
+
+O arquivo já vem com o cluster da célula preenchido:
+
+```env
+MQTT_URL=mqtts://9dd637379bc94f2b89b23b6ec264fd19.s1.eu.hivemq.cloud:8883
 MQTT_USER=celula-r01
-MQTT_PASS=<a senha do broker>
 MQTT_TOPICO=multilaser/paletizadora/r01/estado
 ```
 

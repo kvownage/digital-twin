@@ -52,6 +52,37 @@
 //   3. Chamar no fim do Main [OB1], depois de "06 - MODBUS CONN"
 //   4. Compilar e carregar (pode ser em RUN: nenhum DB muda de estrutura)
 //
+//  ---------------------------------------------- SEGUNDA CONEXÃO MODBUS -----
+//  A porta 502 já tem um cliente: a BALANÇA (ela escreve HR1 e HR2). Uma
+//  instância de MB_SERVER atende UMA conexão, então o gateway precisa da sua.
+//
+//  E precisa de PORTA PRÓPRIA, não só de instância própria: com as duas
+//  instâncias na 502 elas são intercambiáveis, e o gateway — reconectando
+//  numa oscilação de rede — pode ocupar as DUAS vagas e deixar a balança
+//  de fora. Life bit congela, ALARMES.BALANCA sobe, linha para.
+//
+//  Com porta separada a vaga da balança fica reservada:
+//
+//    BALANÇA  -> porta 502   instância MB_SERVER_DB    "DB MODBUS COMM".Conection
+//                            (JÁ EXISTE — não mexer)
+//    GATEWAY  -> porta 503   instância MB_SERVER_DB_2  "DB MODBUS COMM".Conection2
+//
+//  No DB 34 "DB MODBUS COMM", acrescentar o membro:
+//    Conection2 : TCON_IP_v4
+//       InterfaceId := 64      (igual ao existente)
+//       ID          := 2       (ÚNICO — o existente é 1)
+//       LocalPort   := 503     (a balança fica sozinha na 502)
+//
+//  No FC "06 - MODBUS CONN", uma rede nova:
+//    MB_SERVER (instância MB_SERVER_DB_2,
+//               DISCONNECT  := FALSE,
+//               MB_HOLD_REG := "MODBUS HOLDINGS".HOLDINGS,   // o MESMO DB
+//               CONNECT     := "DB MODBUS COMM".Conection2)
+//
+//  ATENÇÃO: mexer na estrutura do DB 34 o reinicializa no download, e a
+//  balança cai e reconecta em segundos. Faça entre ciclos, sem caixa na
+//  balança, e avise quem estiver olhando a IHM.
+//
 //  ATENÇÃO À GRAFIA dos membros do DB "COMANDOS" — o projeto mistura acentos
 //  de propósito ou por descuido, e o compilador é literal:
 //    "TRAM1 - TORRE SINALIZAÇÃO AMARELO"   (com Ç e Ã)

@@ -14,7 +14,7 @@ import "dotenv/config";
 import ModbusRTU from "modbus-serial";
 
 const ip = process.argv[2] ?? process.env.PLC_IP ?? "192.168.0.10";
-const port = Number(process.env.PLC_PORT ?? 502);
+const port = Number(process.env.PLC_PORT ?? 503);   // 502 e da balanca
 const int16 = (v: number) => (v > 0x7fff ? v - 0x10000 : v);
 const bits = (w: number) =>
   [...Array(16)].map((_, i) => ((w >> i) & 1)).join("").replace(/(....)/g, "$1 ");

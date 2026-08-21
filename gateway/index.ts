@@ -2,16 +2,20 @@
 //  GATEWAY: CLP S7-1500 (Modbus TCP) -> broker MQTT.
 //
 //  O CLP JÁ É servidor Modbus no projeto (FC "06 - MODBUS CONN", MB_SERVER,
-//  porta 502, DB 37 "MODBUS HOLDINGS"). Este gateway só LÊ — ele nunca
-//  escreve no CLP.
+//  DB 37 "MODBUS HOLDINGS"). Este gateway só LÊ — nunca escreve no CLP.
 //
-//  Lê HR0..HR26 a cada 100 ms, decodifica e publica no broker. Sem estado
+//  DUAS PORTAS, DUAS INSTÂNCIAS: a 502 é da BALANÇA (que escreve HR1/HR2) e o
+//  gateway usa a 503, com instância MB_SERVER própria. Compartilhar a 502
+//  deixaria as instâncias intercambiáveis, e o gateway poderia ocupar as duas
+//  vagas numa reconexão — derrubando a balança e parando a linha.
+//
+//  Lê HR0..HR34 a cada 100 ms, decodifica e publica no broker. Sem estado
 //  próprio: morrer e renascer não perde nada.
 //
-//  Configuração via .env nesta pasta:
-//    PLC_IP=192.168.0.10       MQTT_URL=mqtt://localhost:1883
-//    PLC_PORT=502              MQTT_TOPICO=multilaser/paletizadora/r01/estado
-//    PLC_UNIT=1
+//  Configuração via .env nesta pasta (ver .env.example):
+//    PLC_IP    o IP do S7
+//    PLC_PORT  503
+//    MQTT_URL / MQTT_USER / MQTT_PASS / MQTT_TOPICO
 // ============================================================================
 import "dotenv/config";
 import ModbusRTU from "modbus-serial";
@@ -19,7 +23,10 @@ import mqtt from "mqtt";
 import type { RealPayload } from "../shared/types.js";
 
 const PLC_IP = process.env.PLC_IP ?? "192.168.0.10";
-const PLC_PORT = Number(process.env.PLC_PORT ?? 502);
+// 503 e não 502: a 502 é da BALANÇA. Porta separada garante que o gateway
+// nunca ocupe a vaga dela numa reconexão — se ocupasse, o life bit da balança
+// congelaria e a linha pararia. Ver plc/07_SUPERVISORIO.scl.
+const PLC_PORT = Number(process.env.PLC_PORT ?? 503);
 const PLC_UNIT = Number(process.env.PLC_UNIT ?? 1);
 const MQTT_URL = process.env.MQTT_URL ?? "mqtt://localhost:1883";
 const TOPICO = process.env.MQTT_TOPICO ?? "multilaser/paletizadora/r01/estado";

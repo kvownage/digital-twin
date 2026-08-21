@@ -14,6 +14,12 @@
 //  Sobe um broker MQTT embutido (aedes) na porta 1883. Em produção quem serve
 //  é o Mosquitto/EMQX de verdade e este arquivo não roda.
 //
+//  CUIDADO: dois publicadores no MESMO topico fazem o gemeo receber estados
+//  contraditorios alternados e a animacao embaralha. Por isso o topico padrao
+//  aqui termina em /TESTE, e nao no da celula — colisao acidental fica
+//  impossivel. Para alimentar o supervisorio de verdade, defina MQTT_TOPICO
+//  explicitamente, e SO com o gateway real desligado.
+//
 //    npm run clp-falso                    (variação padrão)
 //    npm run clp-falso -- --caos 0        (determinístico, sem falhas)
 //    npm run clp-falso -- --caos 3        (bem instável, para testar a tela)
@@ -25,7 +31,7 @@ import mqtt from "mqtt";
 import type { RealPayload } from "../shared/types.js";
 
 const PORTA = Number(process.env.MQTT_PORTA ?? 1883);
-const TOPICO = process.env.MQTT_TOPICO ?? "multilaser/paletizadora/r01/estado";
+const TOPICO = process.env.MQTT_TOPICO ?? "multilaser/paletizadora/r01/TESTE";
 const POR_PALETE = 32;
 
 // Intensidade da variação: 0 = nada aleatório, 1 = realista, 3 = instável.

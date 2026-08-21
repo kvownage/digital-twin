@@ -36,7 +36,9 @@ export class MqttSource extends EventEmitter {
   // ---- o gêmeo ----
   private ptp = new Ptp();
   private wp = 0;                   // índice no roteiro de route()
-  private pegouPrev = false;
+  private carregando = false;       // a caixa está na ventosa?
+  private naBalancaPrev = false;    // para detectar a borda de saída
+  private qtdPrev = -1;             // para detectar o depósito
   private tcpPrev: { x: number; y: number; z: number } | null = null;
   private tcpSpeed = 0;
 
@@ -129,22 +131,62 @@ export class MqttSource extends EventEmitter {
     const boxIndex = Math.max(0, Math.min(TOTAL - 1, countA + countB));
     const wps = route(boxIndex);
 
-    // O evento que manda em tudo: a ventosa.
-    const pegou = p.robo.vacuoLigado && p.robo.vacuoOk;
-    if (pegou && !this.pegouPrev) this.wp = 2;   // subiu: acabou de pegar
-    if (!pegou && this.pegouPrev) this.wp = 6;   // caiu: acabou de soltar
-    this.pegouPrev = pegou;
+    // =======================================================================
+    //  QUAIS SINAIS DIRIGEM O BRAÇO
+    //
+    //  MEDIDO NA CÉLULA REAL, com o gateway publicando:
+    //
+    //    peso 0 -> 1            a balança aprovou
+    //    vacuoLigado -> true    o robô pegou          <- alterna certo
+    //    pecaEmPosicao -> false a caixa saiu          <- alterna certo
+    //    vacuoLigado -> false   comando de vácuo cai
+    //    qtdeLado1 6 -> 7       depositou             <- alterna certo
+    //
+    //  E o `vacuoOk` (VC1) NUNCA muda: fica em false o tempo todo. A versão
+    //  anterior exigia `vacuoLigado && vacuoOk`, então a condição jamais era
+    //  verdadeira — a pilha crescia pelo contador e o braço ficava parado.
+    //  Era esse o defeito.
+    //
+    //  Duas bordas dirigem o braço, e nenhuma depende de VC1:
+    //    vácuo LIGA (ou a peça sai da balança)  -> pegou: sobe e parte
+    //    o contador INCREMENTA                  -> depositou: recua
+    // =======================================================================
+    const naBalanca = p.balanca.pecaEmPosicao;
+    // Só `vacuoLigado`: é o comando de vácuo, e é o que alterna de verdade.
+    // O VC1 não entra — está morto no dado real (ver acima).
+    const vacuo = p.robo.vacuoLigado;
+    const qtd = p.qtdeLado1;
 
-    if (pegou) {
-      // Carregando: percorre SOBE -> GIRO -> APROX -> DEPOSITA e espera lá
-      // até o vácuo cair. Quem diz "chegou" é a própria cinemática.
+    // primeira mensagem: só sincroniza, sem inventar evento
+    if (this.qtdPrev < 0) {
+      this.qtdPrev = qtd;
+      this.naBalancaPrev = naBalanca;
+    }
+
+    const saiuDaBalanca = this.naBalancaPrev && !naBalanca;
+    const depositou = qtd !== this.qtdPrev && qtd > 0;
+
+    if ((saiuDaBalanca || vacuo) && !this.carregando) {
+      this.carregando = true;
+      this.wp = 2;                    // SOBE, com a caixa
+    }
+    if (depositou && this.carregando) {
+      this.carregando = false;
+      this.wp = 6;                    // RECUA, caixa já na pilha
+    }
+    this.naBalancaPrev = naBalanca;
+    this.qtdPrev = qtd;
+
+    if (this.carregando) {
+      // Percorre SOBE -> GIRO -> APROX -> DEPOSITA e espera no destino até
+      // o contador confirmar. Quem diz "chegou" é a própria cinemática.
       if (this.wp < 2) this.wp = 2;
       if (this.wp < 5 && this.ptp.chegou) this.wp++;
     } else if (this.wp === 6) {
       if (this.ptp.chegou) this.wp = 0;          // terminou de recuar
     } else {
       // Livre: espera sobre a balança; desce quando a peça está liberada.
-      const pronta = p.balanca.pecaEmPosicao && p.balanca.peso === 1;
+      const pronta = naBalanca && p.balanca.peso === 1;
       this.wp = pronta ? 1 : 0;
     }
 
@@ -208,7 +250,7 @@ export class MqttSource extends EventEmitter {
         : p.robo.falha ? "ROBÔ EM FALHA"
         : !p.celula.automatico ? "MANUAL"
         : PHASES[route(boxIndex)[this.wp]?.phase ?? 0],
-      carrying: this.pegouPrev,
+      carrying: this.carregando,
       feed: p.balanca.pecaEmPosicao
         ? {
             x: PICK.r,

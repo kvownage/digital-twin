@@ -49,6 +49,8 @@ export class MqttSource extends EventEmitter {
 
   /** Teto de tempo carregando, antes de soltar por conta própria. */
   private static readonly MAX_CARREGANDO_S = 10;
+  /** Quanto tempo, após assumir, um lado desconfia do contador. */
+  private static readonly JANELA_TROCA_S = 2;
 
   /** Larga a caixa e recua. Um só lugar, para não esquecer campo nenhum. */
   private solta() {
@@ -60,8 +62,8 @@ export class MqttSource extends EventEmitter {
   private feedX: number | null = null;   // posição no eixo da linha, ou null
   // ---- os paletes indo embora na empilhadeira ----
   private pal = {
-    A: { pres: null as boolean | null, saida: 1, caixas: 0, qtdAnt: 0 },
-    B: { pres: null as boolean | null, saida: 1, caixas: 0, qtdAnt: 0 },
+    A: { pres: null as boolean | null, saida: 1, caixas: 0, qtdAnt: 0, eraAtivo: false, tAtivo: 0 },
+    B: { pres: null as boolean | null, saida: 1, caixas: 0, qtdAnt: 0, eraAtivo: false, tAtivo: 0 },
   };
   private tcpPrev: { x: number; y: number; z: number } | null = null;
   private tcpSpeed = 0;
@@ -444,14 +446,36 @@ export class MqttSource extends EventEmitter {
     //  no meio com a quantidade que ele realmente tem.
     // =====================================================================
     if (ativo) {
+      e.tAtivo = e.eraAtivo ? e.tAtivo + dt : 0;
+
       // A troca de lado zera o contador. Se ela chegar no mesmo quadro em que
       // este lado ainda está marcado como ativo, o zero apagaria o palete que
       // acabou de ser fechado — então esse quadro é ignorado. Recuo de falha
       // (18 -> 16) não é zero, e continua sendo respeitado.
       const zerou = qtd === 0 && e.qtdAnt > 0;
-      if (!zerou) e.caixas = qtd;
+
+      // ---------------------------------------------------------------------
+      //  A JANELA DA TROCA DE LADO
+      //
+      //  Ao assumir, este lado NÃO pode confiar no contador de imediato: por
+      //  um instante ele ainda traz o valor do lado anterior — 32 — porque o
+      //  CLP só o zera depois. Adotá-lo montava um palete CHEIO aqui, que
+      //  desaparecia no quadro seguinte. Palete surgindo e sumindo do nada é
+      //  pior do que informação faltando.
+      //
+      //  Na janela, só se aceita valor PLAUSÍVEL para este palete: no máximo
+      //  uma caixa a mais do que ele já tinha. Passada a janela, aceita-se o
+      //  que vier — a essa altura o contador é deste lado, e travar aqui
+      //  deixaria a pilha congelada para sempre (por exemplo, ao abrir a tela
+      //  no meio de um palete).
+      // ---------------------------------------------------------------------
+      const naJanela = e.tAtivo < MqttSource.JANELA_TROCA_S;
+      const plausivel = qtd <= e.caixas + 1;
+
+      if (!zerou && (plausivel || !naJanela)) e.caixas = qtd;
       e.qtdAnt = qtd;
     }
+    e.eraAtivo = ativo;
   }
 
   /** A pilha reconstituída dos contadores, pelas mesmas tabelas do padrão. */
